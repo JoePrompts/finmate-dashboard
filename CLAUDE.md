@@ -101,3 +101,26 @@ The dashboard follows exact shadcn/ui patterns:
 - Preserve OKLCH color system
 - Maintain responsive design patterns
 - Test theme switching functionality
+
+## Recent Changes
+- UI: Header title alignment fixed — "FinMate Dashboard" now left-aligned; actions sit on the right.
+- Error UX: Added clear inline alert for Supabase fetch failures and improved console messages.
+- Supabase Guard: `SUPABASE_CONFIGURED` exported from `src/lib/supabase.ts`; fetch short-circuits when env vars are missing.
+- Env Setup: `.env` and `.env.local` supported. Use `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for client; keep server-only vars without NEXT_PUBLIC.
+- Colors: Added missing `--destructive-foreground` token in light/dark themes.
+- Tailwind Mapping: Switched Tailwind color config to read raw CSS variables (`var(--...)`) for OKLCH compatibility instead of `hsl(var(--...))`.
+- Dev Server: Defaults to port 3000; if busy, we use 3001.
+
+## Environment Variables
+Create `.env.local` for local development (not committed):
+
+```
+NEXT_PUBLIC_SUPABASE_URL=<your-supabase-project-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+# Optional server-side only
+SUPABASE_URL=<your-supabase-project-url>
+SUPABASE_ANON_KEY=<your-supabase-anon-key>
+SUPABASE_DB_PASSWORD=<your-db-password>
+```
+
+`.gitignore` excludes `.env*` by default.
