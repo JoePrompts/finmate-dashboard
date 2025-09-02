@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { supabase, type Expense } from "@/lib/supabase"
+import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { 
   DollarSign, 
@@ -37,6 +37,7 @@ export default function Dashboard() {
     count: 0,
     topCategory: 'N/A'
   })
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     // Apply theme
@@ -58,6 +59,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchExpenses() {
+      // Skip fetching if Supabase is not configured
+      if (!SUPABASE_CONFIGURED) {
+        setErrorMsg('Supabase environment variables are not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to fetch data.')
+        setLoading(false)
+        return
+      }
       try {
         const { data, error } = await supabase
           .from('expenses')
@@ -88,7 +95,9 @@ export default function Dashboard() {
           })
         }
       } catch (error) {
-        console.error('Error fetching expenses:', error)
+        const msg = (error as any)?.message || (error as any)?.error_description || (error as any)?.statusText || 'Unknown error'
+        setErrorMsg(`Error fetching expenses: ${msg}`)
+        console.error('Error fetching expenses:', msg)
       } finally {
         setLoading(false)
       }
@@ -101,11 +110,11 @@ export default function Dashboard() {
     return (
       <div className="flex min-h-screen w-full flex-col">
         <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-          <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
-            <div className="ml-auto flex-1 sm:flex-initial">
+          <div className="flex w-full items-center gap-4 md:gap-2 lg:gap-4">
+            <div className="flex-1">
               <Skeleton className="h-4 w-32" />
             </div>
-            <Skeleton className="h-8 w-8" />
+            <Skeleton className="ml-auto h-8 w-8" />
             <Skeleton className="h-8 w-8" />
           </div>
         </header>
@@ -169,14 +178,14 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen w-full flex-col">
       <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-        <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
-          <div className="ml-auto flex-1 sm:flex-initial">
+        <div className="flex w-full items-center gap-4 md:gap-2 lg:gap-4">
+          <div className="flex-1">
             <div className="relative">
               <Activity className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <div className="pl-8 text-sm font-medium">FinMate Dashboard</div>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          <Button className="ml-auto" variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="h-4 w-4" />
             <span className="sr-only">Refresh</span>
           </Button>
@@ -205,6 +214,15 @@ export default function Dashboard() {
         </div>
       </header>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        {errorMsg && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Unable to fetch expenses</AlertTitle>
+            <AlertDescription>
+              {errorMsg}
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
           <Card x-chunk="dashboard-01-chunk-0">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
