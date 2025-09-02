@@ -1,103 +1,191 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { supabase, type Expense } from "@/lib/supabase"
+import { useEffect, useState } from "react"
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+export default function Dashboard() {
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({
+    total: 0,
+    count: 0,
+    topCategory: 'N/A'
+  })
+
+  useEffect(() => {
+    async function fetchExpenses() {
+      try {
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        if (error) throw error
+
+        setExpenses(data || [])
+        
+        // Calculate stats
+        if (data && data.length > 0) {
+          const total = data.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0)
+          const categories: Record<string, number> = {}
+          
+          data.forEach(exp => {
+            categories[exp.category] = (categories[exp.category] || 0) + parseFloat(exp.amount.toString())
+          })
+          
+          const topCategory = Object.entries(categories)
+            .sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'
+
+          setStats({
+            total,
+            count: data.length,
+            topCategory
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching expenses:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchExpenses()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2">Loading FinMate Dashboard...</h2>
+          <p className="text-muted-foreground">Fetching your expense data</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">FinMate Dashboard</h1>
+          <p className="text-muted-foreground">Your AI-powered expense tracker insights</p>
+        </div>
+        <Button variant="outline">
+          Refresh Data
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${stats.total.toLocaleString()} COP
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Last 10 transactions
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Transactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.count}</div>
+            <p className="text-xs text-muted-foreground">
+              Recent expenses tracked
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Top Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.topCategory}</div>
+            <p className="text-xs text-muted-foreground">
+              Your most spending category
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Expenses */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Expenses</CardTitle>
+          <CardDescription>
+            Your latest expense transactions from the FinMate bot
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {expenses.length === 0 ? (
+            <div className="text-center py-8">
+              <h3 className="text-lg font-semibold mb-2">No expenses found</h3>
+              <p className="text-muted-foreground mb-4">
+                Start tracking expenses by sending messages to your FinMate bot on Telegram!
+              </p>
+              <Button variant="outline">
+                Learn How to Use FinMate Bot
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {expenses.map((expense) => (
+                <div key={expense.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        ${parseFloat(expense.amount.toString()).toLocaleString()} {expense.currency}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        • {expense.category}
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {expense.merchant && <span>{expense.merchant} • </span>}
+                      {expense.payment_method && <span>{expense.payment_method} • </span>}
+                      {new Date(expense.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium">{expense.category}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Bot Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>FinMate Bot Status</CardTitle>
+          <CardDescription>
+            Your AI bot is live and tracking expenses 24/7
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2 text-green-600">
+            <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+            <span className="font-medium">Bot is live and running</span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            Send expense messages to your Telegram bot to see them appear here in real-time.
+          </p>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
