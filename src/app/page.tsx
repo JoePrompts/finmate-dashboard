@@ -3,7 +3,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -16,16 +15,11 @@ import {
   RefreshCw, 
   Activity, 
   AlertCircle, 
-  Calendar, 
-  Store, 
-  Wallet, 
   Settings, 
   Moon, 
   Sun, 
   Monitor,
-  Sparkles,
-  ArrowUpRight,
-  BarChart3
+  ArrowUpRight
 } from "lucide-react"
 
 export default function Dashboard() {
@@ -38,6 +32,24 @@ export default function Dashboard() {
     topCategory: 'N/A'
   })
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const getErrorMessage = (err: unknown): string => {
+    if (err instanceof Error && err.message) return err.message
+    if (typeof err === 'object' && err !== null) {
+      const rec = err as Record<string, unknown>
+      const m = rec['message']
+      if (typeof m === 'string') return m
+      const ed = rec['error_description']
+      if (typeof ed === 'string') return ed
+      const st = rec['statusText']
+      if (typeof st === 'string') return st
+    }
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return String(err ?? 'Unknown error')
+    }
+  }
 
   useEffect(() => {
     // Apply theme
@@ -94,8 +106,8 @@ export default function Dashboard() {
             topCategory
           })
         }
-      } catch (error) {
-        const msg = (error as any)?.message || (error as any)?.error_description || (error as any)?.statusText || 'Unknown error'
+      } catch (error: unknown) {
+        const msg = getErrorMessage(error)
         setErrorMsg(`Error fetching expenses: ${msg}`)
         console.error('Error fetching expenses:', msg)
       } finally {

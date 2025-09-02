@@ -1,0 +1,27 @@
+
+> finmate-dashboard@0.1.0 dev
+> next dev -p 3001
+
+   ▲ Next.js 15.5.2
+   - Local:        http://localhost:3001
+   - Network:      http://192.168.1.16:3001
+   - Environments: .env.local, .env
+
+ ✓ Starting...
+ ✓ Ready in 1514ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1329ms (901 modules)
+ GET / 200 in 1839ms
+ ✓ Compiled in 219ms (398 modules)
+ ✓ Compiled /favicon.ico in 157ms (520 modules)
+ GET /favicon.ico 200 in 243ms
+ ✓ Compiled in 419ms (901 modules)
+ GET / 200 in 121ms
+ ✓ Compiled in 323ms (901 modules)
+ GET / 200 in 45ms
+ GET / 200 in 265ms
+ ✓ Compiled /favicon.ico in 165ms (520 modules)
+ GET /favicon.ico 200 in 262ms
+ ✓ Compiled in 443ms (887 modules)
+ ✓ Compiled in 275ms (901 modules)
+ GET / 200 in 193ms

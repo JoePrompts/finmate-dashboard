@@ -7,7 +7,6 @@ export const SUPABASE_CONFIGURED = Boolean(supabaseUrl && supabaseAnonKey)
 
 if (!SUPABASE_CONFIGURED) {
   // Soft warning for local/dev without env vars. Calls will fail gracefully in UI.
-  // eslint-disable-next-line no-console
   console.warn(
     '[FinMate] NEXT_PUBLIC_SUPABASE_URL/ANON_KEY are not set. The dashboard will render but data fetching will be disabled.'
   )
