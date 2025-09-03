@@ -8,30 +8,31 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import { useEffect, useState } from "react"
-import { 
-  DollarSign, 
-  CreditCard, 
-  TrendingUp, 
-  RefreshCw, 
-  Activity, 
-  AlertCircle, 
-  Settings, 
-  Moon, 
-  Sun, 
+import {
+  RefreshCw,
+  Activity,
+  AlertCircle,
+  Settings,
+  Moon,
+  Sun,
   Monitor,
-  ArrowUpRight
+  ArrowUpRight,
+  PiggyBank,
+  Wallet,
+  Receipt,
+  HeartPulse,
 } from "lucide-react"
 
 export default function Dashboard() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
-  const [stats, setStats] = useState({
-    total: 0,
-    count: 0,
-    topCategory: 'N/A'
-  })
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [netWorth, setNetWorth] = useState(0)
+  const [monthlyExpenses, setMonthlyExpenses] = useState(0)
+  const [monthlyIncome, setMonthlyIncome] = useState(0)
+  const [expectedBudget, setExpectedBudget] = useState(0)
+  const monthlyAvailable = monthlyIncome - monthlyExpenses - expectedBudget
 
   const getErrorMessage = (err: unknown): string => {
     if (err instanceof Error && err.message) return err.message
@@ -87,25 +88,6 @@ export default function Dashboard() {
         if (error) throw error
 
         setExpenses(data || [])
-        
-        // Calculate stats
-        if (data && data.length > 0) {
-          const total = data.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0)
-          const categories: Record<string, number> = {}
-          
-          data.forEach(exp => {
-            categories[exp.category] = (categories[exp.category] || 0) + parseFloat(exp.amount.toString())
-          })
-          
-          const topCategory = Object.entries(categories)
-            .sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'
-
-          setStats({
-            total,
-            count: data.length,
-            topCategory
-          })
-        }
       } catch (error: unknown) {
         const msg = getErrorMessage(error)
         setErrorMsg(`Error fetching expenses: ${msg}`)
@@ -116,6 +98,97 @@ export default function Dashboard() {
     }
 
     fetchExpenses()
+  }, [])
+
+  useEffect(() => {
+    async function fetchMetrics() {
+      if (!SUPABASE_CONFIGURED) return
+
+      // Current month range (UTC)
+      const start = new Date()
+      start.setUTCDate(1)
+      start.setUTCHours(0, 0, 0, 0)
+      const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999))
+
+      // Monthly Expenses (entry_type = 'expense')
+      try {
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('amount, created_at, entry_type')
+          .gte('created_at', start.toISOString())
+          .lte('created_at', end.toISOString())
+          .in('entry_type', ['expense', 'EXPENSE'])
+        if (error) throw error
+        const sum = (data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+        setMonthlyExpenses(sum)
+      } catch (e) {
+        console.warn('Monthly expenses fetch failed:', e)
+      }
+
+      // Monthly Income (entry_type = 'income')
+      try {
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('amount, created_at, entry_type')
+          .gte('created_at', start.toISOString())
+          .lte('created_at', end.toISOString())
+          .in('entry_type', ['income', 'INCOME'])
+        if (error) throw error
+        const sum = (data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+        setMonthlyIncome(sum)
+      } catch (e) {
+        console.warn('Monthly income fetch failed:', e)
+      }
+
+      // Expected Budget Expenses (from budget tables if populated)
+      // Defaults to 0 if tables are empty or inaccessible
+      try {
+        // Attempt from budget_items first
+        const { data: bi, error: biErr } = await supabase
+          .from('budget_items')
+          .select('*')
+          .limit(100)
+        if (!biErr && bi && bi.length > 0) {
+          // Try common numeric fields in priority order
+          const numericKeys = ['planned_amount', 'amount', 'expected_amount'] as const
+          const key = numericKeys.find(k => Object.prototype.hasOwnProperty.call(bi[0], k)) as keyof typeof bi[0] | undefined
+          if (key) {
+            const sum = bi.reduce((s: number, r: any) => s + Number(r[key] || 0), 0)
+            setExpectedBudget(sum)
+          }
+        } else {
+          // Fallback to budgets
+          const { data: b, error: bErr } = await supabase
+            .from('budgets')
+            .select('*')
+            .limit(100)
+          if (!bErr && b && b.length > 0) {
+            const numericKeys = ['planned_amount', 'amount', 'expected_amount'] as const
+            const key = numericKeys.find(k => Object.prototype.hasOwnProperty.call(b[0], k)) as keyof typeof b[0] | undefined
+            if (key) {
+              const sum = b.reduce((s: number, r: any) => s + Number(r[key] || 0), 0)
+              setExpectedBudget(sum)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Budget fetch failed:', e)
+      }
+
+      // Net Worth (sum of accounts.starting_balance as a baseline)
+      try {
+        const { data, error } = await supabase
+          .from('accounts')
+          .select('starting_balance')
+        if (error) throw error
+        const sum = (data || []).reduce((s, r) => s + Number((r as any).starting_balance || 0), 0)
+        setNetWorth(sum)
+      } catch (e) {
+        console.warn('Net worth fetch failed:', e)
+      }
+    }
+
+    fetchMetrics()
   }, [])
 
   if (loading) {
@@ -238,55 +311,40 @@ export default function Dashboard() {
         <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
           <Card x-chunk="dashboard-01-chunk-0">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Expenses
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Net Worth</CardTitle>
+              <PiggyBank className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${stats.total.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">
-                All time spending
-              </p>
+              <div className="text-2xl font-bold">${netWorth.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">Sum of account balances</p>
             </CardContent>
           </Card>
           <Card x-chunk="dashboard-01-chunk-1">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Transactions
-              </CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Monthly Expenses</CardTitle>
+              <Receipt className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.count}</div>
-              <p className="text-xs text-muted-foreground">
-                Total expenses tracked
-              </p>
+              <div className="text-2xl font-bold">${monthlyExpenses.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
           <Card x-chunk="dashboard-01-chunk-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Top Category</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Monthly Available</CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.topCategory}</div>
-              <p className="text-xs text-muted-foreground">
-                Highest spending category
-              </p>
+              <div className="text-2xl font-bold">${monthlyAvailable.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">Income − Expenses − Budget</p>
             </CardContent>
           </Card>
           <Card x-chunk="dashboard-01-chunk-3">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Bot Status</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Finance Health Monitor</CardTitle>
+              <HeartPulse className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">Online</div>
-              <p className="text-xs text-muted-foreground">
-                FinMate bot is active
-              </p>
-            </CardContent>
+            <CardContent></CardContent>
           </Card>
         </div>
         <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">

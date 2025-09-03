@@ -13,7 +13,11 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 
 ## Key Features
 - Real-time expense tracking from Telegram bot
-- Dashboard with expense statistics (total spent, transaction count, top category)
+- Dashboard top-row metrics:
+  - Total Net Worth (sum of `accounts.starting_balance`)
+  - Total Monthly Expenses (current month; `expenses.entry_type` = "expense")
+  - Total Monthly Available (`monthlyIncome - monthlyExpenses - expectedBudget`)
+  - Finance Health Monitor (reserved; UI placeholder)
 - Recent expenses list with merchant and payment method details
 - Bot status monitoring with server health indicators
 - Dark/light/system theme support
@@ -21,7 +25,11 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 
 ## Database Schema
 - **Table**: `expenses`
-- **Fields**: id, amount, category, merchant, payment_method, currency, created_at
+  - Key fields: `id`, `amount`, `currency`, `merchant`, `category`, `payment_method`, `description`, `date`, `created_at`, `user_id`, `entry_type` ("income" | "expense"), `account`, `income_source`
+- **Table**: `accounts`
+  - Key fields: `id`, `name`, `type`, `currency`, `starting_balance`, `is_credit_card`, `created_at`
+- **Tables**: `budgets`, `budget_items` (optional; may be empty)
+  - Expected numeric fields (auto-detected): `planned_amount` | `amount` | `expected_amount`
 
 ## Current Color Scheme (OKLCH)
 The dashboard uses a modern OKLCH color system defined in `src/app/globals.css`:
@@ -54,7 +62,7 @@ The dashboard follows exact shadcn/ui patterns:
 - Responsive grid system (`md:grid-cols-2 lg:grid-cols-4`)
 
 ### Key Components
-1. **Stats Cards**: 4-card grid showing total expenses, transactions, top category, bot status
+1. **Stats Cards**: 4-card grid showing Total Net Worth, Total Monthly Expenses, Total Monthly Available, Finance Health Monitor
 2. **Recent Expenses**: Large card (`xl:col-span-2`) with transaction list
 3. **Bot Status**: Right sidebar with server status, connection info, and instructions
 
@@ -110,6 +118,8 @@ The dashboard follows exact shadcn/ui patterns:
 - Colors: Added missing `--destructive-foreground` token in light/dark themes.
 - Tailwind Mapping: Switched Tailwind color config to read raw CSS variables (`var(--...)`) for OKLCH compatibility instead of `hsl(var(--...))`.
 - Dev Server: Defaults to port 3000; if busy, we use 3001.
+- Dashboard Metrics: Replaced first-row cards with Net Worth, Monthly Expenses, Monthly Available, and Health Monitor placeholder while preserving shadcn/ui design.
+- Supabase Aggregates: Monthly income/expenses read from `expenses` by `entry_type`; net worth from `accounts.starting_balance`; expected budget auto-detected from `budget_items`/`budgets` if present.
 
 ## Environment Variables
 Create `.env.local` for local development (not committed):
