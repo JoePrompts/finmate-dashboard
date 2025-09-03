@@ -110,6 +110,14 @@ export default function Dashboard() {
       start.setUTCHours(0, 0, 0, 0)
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999))
 
+      type ExpenseLite = {
+        amount: number | string | null
+        created_at: string
+        entry_type?: string | null
+      }
+      type AccountLite = { starting_balance: number | string | null }
+      type BudgetRecord = Record<string, unknown>
+
       // Monthly Expenses (entry_type = 'expense')
       try {
         const { data, error } = await supabase
@@ -119,7 +127,8 @@ export default function Dashboard() {
           .lte('created_at', end.toISOString())
           .in('entry_type', ['expense', 'EXPENSE'])
         if (error) throw error
-        const sum = (data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+        const rows = (data || []) as ExpenseLite[]
+        const sum = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0)
         setMonthlyExpenses(sum)
       } catch (e) {
         console.warn('Monthly expenses fetch failed:', e)
@@ -134,7 +143,8 @@ export default function Dashboard() {
           .lte('created_at', end.toISOString())
           .in('entry_type', ['income', 'INCOME'])
         if (error) throw error
-        const sum = (data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+        const rows = (data || []) as ExpenseLite[]
+        const sum = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0)
         setMonthlyIncome(sum)
       } catch (e) {
         console.warn('Monthly income fetch failed:', e)
@@ -151,9 +161,17 @@ export default function Dashboard() {
         if (!biErr && bi && bi.length > 0) {
           // Try common numeric fields in priority order
           const numericKeys = ['planned_amount', 'amount', 'expected_amount'] as const
-          const key = numericKeys.find(k => Object.prototype.hasOwnProperty.call(bi[0], k)) as keyof typeof bi[0] | undefined
+          const first = bi[0] as BudgetRecord
+          const key = numericKeys.find(k => {
+            const v = first[k as string]
+            return typeof v === 'number' || typeof v === 'string'
+          }) as (typeof numericKeys)[number] | undefined
           if (key) {
-            const sum = bi.reduce((s: number, r: any) => s + Number(r[key] || 0), 0)
+            const sum = (bi as BudgetRecord[]).reduce((s: number, r: BudgetRecord) => {
+              const v = r[key as string]
+              const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : 0
+              return s + (Number.isFinite(Number(n)) ? Number(n) : 0)
+            }, 0)
             setExpectedBudget(sum)
           }
         } else {
@@ -164,9 +182,17 @@ export default function Dashboard() {
             .limit(100)
           if (!bErr && b && b.length > 0) {
             const numericKeys = ['planned_amount', 'amount', 'expected_amount'] as const
-            const key = numericKeys.find(k => Object.prototype.hasOwnProperty.call(b[0], k)) as keyof typeof b[0] | undefined
+            const first = b[0] as BudgetRecord
+            const key = numericKeys.find(k => {
+              const v = first[k as string]
+              return typeof v === 'number' || typeof v === 'string'
+            }) as (typeof numericKeys)[number] | undefined
             if (key) {
-              const sum = b.reduce((s: number, r: any) => s + Number(r[key] || 0), 0)
+              const sum = (b as BudgetRecord[]).reduce((s: number, r: BudgetRecord) => {
+                const v = r[key as string]
+                const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : 0
+                return s + (Number.isFinite(Number(n)) ? Number(n) : 0)
+              }, 0)
               setExpectedBudget(sum)
             }
           }
@@ -181,7 +207,8 @@ export default function Dashboard() {
           .from('accounts')
           .select('starting_balance')
         if (error) throw error
-        const sum = (data || []).reduce((s, r) => s + Number((r as any).starting_balance || 0), 0)
+        const rows = (data || []) as AccountLite[]
+        const sum = rows.reduce((s, r) => s + Number(r.starting_balance ?? 0), 0)
         setNetWorth(sum)
       } catch (e) {
         console.warn('Net worth fetch failed:', e)
