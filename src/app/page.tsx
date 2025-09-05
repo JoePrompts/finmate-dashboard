@@ -6,8 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { cn } from "@/lib/utils"
 import {
   RefreshCw,
   Activity,
@@ -21,10 +26,22 @@ import {
   Wallet,
   Receipt,
   HeartPulse,
+  ShoppingCart,
+  Utensils,
+  Car,
+  Plane,
+  Home,
+  PlugZap,
+  Film,
+  Dumbbell,
+  Landmark,
+  Tag,
+  CreditCard,
 } from "lucide-react"
 
 export default function Dashboard() {
-  const [expenses, setExpenses] = useState<Expense[]>([])
+  type ExpenseRow = Expense & { entry_type?: string | null }
+  const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -33,6 +50,92 @@ export default function Dashboard() {
   const [monthlyIncome, setMonthlyIncome] = useState(0)
   const [expectedBudget, setExpectedBudget] = useState(0)
   const monthlyAvailable = monthlyIncome - monthlyExpenses - expectedBudget
+  type AccountRow = {
+    id: string | number
+    name?: string | null
+    starting_balance?: number | string | null
+    balance?: number | string | null
+    type?: string | null
+    account_type?: string | null
+    is_credit_card?: boolean | null
+    currency?: string | null
+  }
+  type AccountDisplay = { id: string | number; name: string; amount: number; currency?: string }
+  const [accounts, setAccounts] = useState<AccountDisplay[]>([])
+  const [creditCards, setCreditCards] = useState<AccountDisplay[]>([])
+
+  // Global USD->COP FX for aggregations (shared with tooltip cache)
+  const { data: usdCopRate } = useQuery({
+    queryKey: ["fx", "USD", "COP"],
+    queryFn: async () => {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD')
+      if (!res.ok) throw new Error(`FX HTTP ${res.status}`)
+      const json = await res.json()
+      const cop = json?.rates?.COP
+      if (typeof cop !== 'number') throw new Error('COP rate unavailable')
+      return cop as number
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  })
+
+  function getCategoryIcon(category: string) {
+    if (category.includes('grocery') || category.includes('supermarket')) return ShoppingCart
+    if (category.includes('food') || category.includes('dining') || category.includes('restaurant') || category.includes('coffee')) return Utensils
+    if (category.includes('transport') || category.includes('uber') || category.includes('taxi') || category.includes('car')) return Car
+    if (category.includes('travel') || category.includes('flight') || category.includes('air')) return Plane
+    if (category.includes('rent') || category.includes('mortgage') || category.includes('home') || category.includes('housing')) return Home
+    if (category.includes('utility') || category.includes('electric') || category.includes('power') || category.includes('internet')) return PlugZap
+    if (category.includes('entertain') || category.includes('movie') || category.includes('cinema') || category.includes('tv') || category.includes('game')) return Film
+    if (category.includes('fitness') || category.includes('gym')) return Dumbbell
+    if (category.includes('salary') || category.includes('payroll') || category.includes('income')) return Landmark
+    if (category.includes('shopping') || category.includes('retail')) return ShoppingCart
+    return Tag
+  }
+
+  function UsdToCop({ amount }: { amount: number }) {
+    const [open, setOpen] = useState(false)
+
+    const { data: rate, isLoading, isError, error, refetch } = useQuery({
+      queryKey: ["fx", "USD", "COP"],
+      queryFn: async () => {
+        console.log('[FX] Query: fetching USD->COP …')
+        const res = await fetch('https://open.er-api.com/v6/latest/USD')
+        console.log('[FX] Query: status', res.status)
+        if (!res.ok) throw new Error(`FX HTTP ${res.status}`)
+        const json = await res.json()
+        console.log('[FX] Query: payload keys', Object.keys(json || {}))
+        const cop = json?.rates?.COP
+        if (typeof cop !== 'number') throw new Error('COP rate unavailable')
+        return cop as number
+      },
+      enabled: open,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      retry: 1,
+    })
+
+    const copValue = typeof rate === 'number' ? amount * rate : null
+
+    return (
+      <Tooltip open={open} onOpenChange={(v)=>{ setOpen(v); if (v) refetch(); }}>
+        <TooltipTrigger asChild>
+          <span className="underline decoration-dotted underline-offset-2 cursor-default">USD</span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end" className="w-56 text-sm">
+          {open && isLoading && <div className="text-muted-foreground">Loading FX…</div>}
+          {open && isError && <div className="text-red-600">{(error as Error)?.message || 'FX fetch failed'}</div>}
+          {open && !isLoading && !isError && typeof rate === 'number' && (
+            <div className="space-y-1">
+              <div className="font-medium">COP {copValue?.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">1 USD = {rate.toLocaleString()} COP</div>
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   const getErrorMessage = (err: unknown): string => {
     if (err instanceof Error && err.message) return err.message
@@ -87,7 +190,7 @@ export default function Dashboard() {
 
         if (error) throw error
 
-        setExpenses(data || [])
+        setExpenses((data as ExpenseRow[]) || [])
       } catch (error: unknown) {
         const msg = getErrorMessage(error)
         setErrorMsg(`Error fetching expenses: ${msg}`)
@@ -201,28 +304,150 @@ export default function Dashboard() {
         console.warn('Budget fetch failed:', e)
       }
 
-      // Net Worth (sum of accounts.starting_balance as a baseline)
+      // Net Worth (sum of accounts.starting_balance as a baseline) and Accounts lists
       try {
         const { data, error } = await supabase
           .from('accounts')
-          .select('starting_balance')
+          .select('*')
         if (error) throw error
-        const rows = (data || []) as AccountLite[]
-        const sum = rows.reduce((s, r) => s + Number(r.starting_balance ?? 0), 0)
+        const rows = (data || []) as unknown as AccountRow[]
+        const sum = rows.reduce((s, r) => s + Number((r.starting_balance ?? r.balance) ?? 0), 0)
         setNetWorth(sum)
+
+        // Helper to pick the best numeric field per record
+        const pickAmount = (rec: Record<string, unknown>, keys: string[]): number => {
+          for (const k of keys) {
+            const v = rec[k]
+            if (typeof v === 'number') return v
+            if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v)
+          }
+          return 0
+        }
+
+        // Prepare non-credit accounts base list using starting balance only
+        const accountsBase: AccountDisplay[] = rows
+          .filter((r) => {
+            const t = String(r.type ?? r.account_type ?? '').toLowerCase()
+            const byFlag = r.is_credit_card === true
+            const byType = t.includes('credit') || t.includes('card')
+            const byName = String(r.name ?? '').toLowerCase().includes('card')
+            return !(byFlag || byType || byName)
+          })
+          .map((r) => {
+            const start = pickAmount(r as unknown as Record<string, unknown>, [
+              'starting_balance',
+            ])
+            return {
+              id: r.id,
+              name: (r.name as string) || 'Account',
+              amount: start,
+              currency: r.currency ?? undefined,
+            }
+          })
+
+        let ccList: AccountDisplay[] = rows
+          .filter((r) => {
+            const t = String(r.type ?? r.account_type ?? '').toLowerCase()
+            const byFlag = r.is_credit_card === true
+            const byType = t.includes('credit') || t.includes('card')
+            const byName = String(r.name ?? '').toLowerCase().includes('card')
+            return byFlag || byType || byName
+          })
+          .map((r) => {
+            const amount = pickAmount(r as unknown as Record<string, unknown>, [
+              'current_balance',
+              'statement_balance',
+              'outstanding_balance',
+              'due_amount',
+              'balance',
+              'starting_balance',
+            ])
+            return {
+              id: r.id,
+              name: (r.name as string) || 'Credit Card',
+              amount,
+              currency: r.currency ?? undefined,
+            }
+          })
+
+        // Compute credit card balances strictly from transactions converted to COP
+        try {
+          type TxRow = { payment_method: string | null; amount: number | string | null; entry_type?: string | null; currency?: string | null }
+          const { data: txs, error: txErr } = await supabase
+            .from('expenses')
+            .select('payment_method, amount, entry_type, currency')
+          if (txErr) throw txErr
+          const normalizedSumByPmCOP = new Map<string, number>()
+          const sumByPmByCurrency = new Map<string, Map<string, number>>()
+          for (const r of (txs || []) as TxRow[]) {
+            const pm = (r.payment_method || '').toString().trim().toLowerCase()
+            if (!pm) continue
+            const val = Number(r.amount ?? 0) || 0
+            const et = (r.entry_type || '').toString().toLowerCase()
+            const signed = et === 'income' ? Math.abs(val) : et === 'expense' ? -Math.abs(val) : val
+            const cur = (r.currency || 'COP').toString().toUpperCase()
+            const toCop = cur === 'USD' && typeof usdCopRate === 'number' ? signed * usdCopRate : signed
+            normalizedSumByPmCOP.set(pm, (normalizedSumByPmCOP.get(pm) || 0) + toCop)
+
+            // Track per-currency sums for bank accounts (no conversion)
+            if (!sumByPmByCurrency.has(pm)) sumByPmByCurrency.set(pm, new Map<string, number>())
+            const curMap = sumByPmByCurrency.get(pm)!
+            curMap.set(cur, (curMap.get(cur) || 0) + signed)
+          }
+
+          // Apply transaction sums to non-credit accounts in their own currency
+          const accountsWithTx: AccountDisplay[] = accountsBase.map((acct) => {
+            const key = acct.name.toLowerCase()
+            const code = (acct.currency || 'USD').toUpperCase()
+            let txTotal = 0
+            for (const [pmKey, mapByCur] of sumByPmByCurrency.entries()) {
+              if (pmKey.includes(key) || key.includes(pmKey)) {
+                txTotal += mapByCur.get(code) || 0
+              }
+            }
+            return { ...acct, amount: acct.amount + txTotal }
+          })
+          setAccounts(accountsWithTx)
+
+          // Match by includes both ways to handle naming differences
+          ccList = ccList.map((cc) => {
+            const ccKey = cc.name.toLowerCase()
+            let txTotalCop = 0
+            let matched = false
+            for (const [pmKey, total] of normalizedSumByPmCOP.entries()) {
+              if (pmKey.includes(ccKey) || ccKey.includes(pmKey)) {
+                txTotalCop += total
+                matched = true
+              }
+            }
+            // Prefer transactions sum when we have matches; otherwise fallback to account balance converted to COP
+            if (matched) {
+              return { ...cc, amount: txTotalCop, currency: 'COP' }
+            }
+            const curr = (cc.currency || 'COP').toUpperCase()
+            const fallbackCop = curr === 'USD' && typeof usdCopRate === 'number' ? cc.amount * usdCopRate : cc.amount
+            return { ...cc, amount: fallbackCop, currency: 'COP' }
+          })
+        } catch (txe) {
+          console.warn('Credit card transaction sum failed:', txe)
+        }
+
+        setCreditCards(ccList)
       } catch (e) {
         console.warn('Net worth fetch failed:', e)
       }
     }
 
     fetchMetrics()
-  }, [])
+  }, [usdCopRate])
 
   if (loading) {
     return (
-      <div className="flex min-h-screen w-full flex-col">
-        <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-          <div className="flex w-full items-center gap-4 md:gap-2 lg:gap-4">
+      <>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b bg-background px-4 md:px-6 sticky top-0">
+          <div className="flex items-center gap-2 px-0 w-full">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
             <div className="flex-1">
               <Skeleton className="h-4 w-32" />
             </div>
@@ -283,14 +508,16 @@ export default function Dashboard() {
             </Card>
           </div>
         </main>
-      </div>
+      </>
     )
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col">
-      <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b bg-background px-4 md:px-6 sticky top-0">
         <div className="flex w-full items-center gap-4 md:gap-2 lg:gap-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1">
             <div className="relative">
               <Activity className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -375,13 +602,11 @@ export default function Dashboard() {
           </Card>
         </div>
         <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-          <Card className="xl:col-span-2" x-chunk="dashboard-01-chunk-4">
+          <Card x-chunk="dashboard-01-chunk-4">
             <CardHeader className="flex flex-row items-center">
               <div className="grid gap-2">
-                <CardTitle>Recent Expenses</CardTitle>
-                <CardDescription>
-                  Your latest expense transactions from the FinMate bot.
-                </CardDescription>
+                <CardTitle>Recent Transactions</CardTitle>
+                <CardDescription>Your latest transactions from the FinMate bot.</CardDescription>
               </div>
               <Button asChild size="sm" className="ml-auto gap-1">
                 <a href="#">
@@ -395,7 +620,7 @@ export default function Dashboard() {
                 <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm" x-chunk="dashboard-02-chunk-1">
                   <div className="flex flex-col items-center gap-1 text-center">
                     <h3 className="text-2xl font-bold tracking-tight">
-                      You have no expenses
+                      You have no transactions
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       You can start tracking as soon as you send your first message to the bot.
@@ -404,26 +629,126 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-8">
-                  {expenses.map((expense) => (
-                    <div key={expense.id} className="flex items-center">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium leading-none">
-                          {expense.category}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {expense.merchant || 'Unknown merchant'}
-                        </p>
+                <div className="space-y-6">
+                  {expenses.map((tx) => {
+                    const type = String(tx.entry_type || "").toLowerCase()
+                    const isIncome = type === 'income'
+                    const isExpense = type === 'expense'
+                    const amount = Number(tx.amount)
+                    const sign = isIncome ? '+' : isExpense ? '-' : amount < 0 ? '-' : ''
+                    const absAmount = Math.abs(amount)
+                    const currency = tx.currency || 'USD'
+
+                    const currencySymbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', AUD: '$', CAD: '$' }
+                    const symbol = currencySymbols[currency.toUpperCase()] || '$'
+
+                    const category = String(tx.category || '').toLowerCase()
+                    const Icon = getCategoryIcon(category)
+                    const when = tx.date || tx.created_at
+                    const date = when ? new Date(when) : null
+                    const dateLabel = date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+
+                    return (
+                      <div key={tx.id} className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium leading-none">{tx.merchant || 'Unknown merchant'}</span>
+                          <span className="text-xs text-muted-foreground">{dateLabel}</span>
+                        </div>
+                        <div
+                          className={cn("ml-auto text-sm font-medium", isIncome && "text-emerald-600")}
+                          style={
+                            (isExpense || (!isIncome && sign === '-'))
+                              ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' }
+                              : undefined
+                          }
+                        >
+                          {sign}{symbol}{absAmount.toLocaleString()}{" "}
+                          {currency.toUpperCase() === 'USD' ? (
+                            <UsdToCop amount={absAmount} />
+                          ) : (
+                            <span>{currency.toUpperCase()}</span>
+                          )}
+                          <span className="ml-1">{isIncome ? '↗' : (isExpense || (!isIncome && sign === '-')) ? '↘' : ''}</span>
+                        </div>
                       </div>
-                      <div className="ml-auto font-medium">
-                        ${parseFloat(expense.amount.toString()).toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
+          <Card x-chunk="dashboard-01-chunk-6">
+            <CardHeader>
+              <CardTitle>Account Balances</CardTitle>
+              <CardDescription>Your current account balances across institutions.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              {accounts.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No accounts found.</div>
+              ) : (
+                accounts.map((acct) => {
+                  const symbol = '$'
+                  const code = (acct.currency || 'USD').toUpperCase()
+                  return (
+                    <div key={acct.id} className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                        <Landmark className="h-4 w-4" />
+                      </div>
+                      <div className="grid gap-1">
+                        <div className="text-sm font-medium leading-none">{acct.name}</div>
+                        <span className="text-xs text-muted-foreground">Currency: {code}</span>
+                      </div>
+                      <div className="ml-auto text-sm font-medium">
+                        {symbol}{acct.amount.toLocaleString()} {" "}
+                        {code === 'USD' || acct.name.toLowerCase().includes('astropay') ? (
+                          <UsdToCop amount={acct.amount} />
+                        ) : (
+                          <span>{code}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </CardContent>
+          </Card>
+          <Card x-chunk="dashboard-01-chunk-7">
+            <CardHeader>
+              <CardTitle>Credit Cards</CardTitle>
+              <CardDescription>Your credit card debt totals (in COP).</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              {creditCards.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No credit cards found.</div>
+              ) : (
+                creditCards.map((cc) => {
+                  // Always show debt in COP, negative with $ symbol (no red color)
+                  const absAmount = Math.abs(cc.amount || 0)
+                  return (
+                    <div key={cc.id} className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                        <CreditCard className="h-4 w-4" />
+                      </div>
+                      <div className="grid gap-1">
+                        <div className="text-sm font-medium leading-none">{cc.name}</div>
+                        <span className="text-xs text-muted-foreground">Debt (COP)</span>
+                      </div>
+                      <div className="ml-auto text-sm font-medium">
+                        -${absAmount.toLocaleString()} COP
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Moved FinMate Bot Status to the bottom */}
+        <div className="grid gap-4 md:gap-8 mt-4">
           <Card x-chunk="dashboard-01-chunk-5">
             <CardHeader>
               <CardTitle>FinMate Bot Status</CardTitle>
@@ -438,45 +763,27 @@ export default function Dashboard() {
                 </div>
                 <Badge variant="secondary">Live</Badge>
               </div>
-              
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium leading-none mb-1">
-                    Server Status
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    finmate-bot.onrender.com
-                  </p>
+                  <p className="text-sm font-medium leading-none mb-1">Server Status</p>
+                  <p className="text-sm text-muted-foreground">finmate-bot.onrender.com</p>
                 </div>
-                
                 <div>
-                  <p className="text-sm font-medium leading-none mb-1">
-                    Database
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Connected • Supabase
-                  </p>
+                  <p className="text-sm font-medium leading-none mb-1">Database</p>
+                  <p className="text-sm text-muted-foreground">Connected • Supabase</p>
                 </div>
-                
                 <div>
-                  <p className="text-sm font-medium leading-none mb-1">
-                    Last Sync
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Just now
-                  </p>
+                  <p className="text-sm font-medium leading-none mb-1">Last Sync</p>
+                  <p className="text-sm text-muted-foreground">Just now</p>
                 </div>
-                
                 <div className="pt-2 border-t">
-                  <p className="text-sm text-muted-foreground">
-                    📱 Send messages to your Telegram bot for real-time expense tracking
-                  </p>
+                  <p className="text-sm text-muted-foreground">📱 Send messages to your Telegram bot for real-time expense tracking</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </main>
-    </div>
+    </>
   )
 }

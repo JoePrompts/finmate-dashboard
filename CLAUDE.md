@@ -23,6 +23,21 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 - Dark/light/system theme support
 - Responsive design
 
+- Aggregations use UTC month boundaries (`[YYYY-MM-01T00:00:00.000Z, month-endT23:59:59.999Z]`).
+- Income/expense split is driven by `expenses.entry_type` in ["income","INCOME","expense","EXPENSE"].
+- Currency display uses `$` (assumes unified currency; no FX normalization yet).
+
+## Supabase Tables Confirmed
+- `expenses`: includes `entry_type` (income/expense), `income_source`, `account` in addition to standard fields.
+- `accounts`: includes `starting_balance` used as baseline for Net Worth.
+- `budgets`, `budget_items`: exist; may be empty. When populated, expected budget is auto-detected.
+
+## Metrics Implementation Details
+- Monthly Expenses: sum of `amount` where `entry_type` ∈ {expense, EXPENSE} and `created_at` within current UTC month.
+- Monthly Income: sum of `amount` where `entry_type` ∈ {income, INCOME} and `created_at` within current UTC month.
+- Net Worth: sum of `accounts.starting_balance` (can be refined to include liabilities/positions later).
+- Expected Budget: attempts to sum one of `planned_amount` | `amount` | `expected_amount` from `budget_items`, falling back to `budgets`; defaults to `0` if none found.
+
 ## Database Schema
 - **Table**: `expenses`
   - Key fields: `id`, `amount`, `currency`, `merchant`, `category`, `payment_method`, `description`, `date`, `created_at`, `user_id`, `entry_type` ("income" | "expense"), `account`, `income_source`
@@ -120,6 +135,8 @@ The dashboard follows exact shadcn/ui patterns:
 - Dev Server: Defaults to port 3000; if busy, we use 3001.
 - Dashboard Metrics: Replaced first-row cards with Net Worth, Monthly Expenses, Monthly Available, and Health Monitor placeholder while preserving shadcn/ui design.
 - Supabase Aggregates: Monthly income/expenses read from `expenses` by `entry_type`; net worth from `accounts.starting_balance`; expected budget auto-detected from `budget_items`/`budgets` if present.
+- Type Safety: Removed `any` usage in metric reducers; added lightweight row types and safe Record indexing to satisfy ESLint (`@typescript-eslint/no-explicit-any`).
+- Build: Fixed Vercel lint failures by enforcing explicit types in `src/app/page.tsx`.
 
 ## Environment Variables
 Create `.env.local` for local development (not committed):
