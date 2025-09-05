@@ -13,19 +13,24 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 
 ## Key Features
 - Real-time expense tracking from Telegram bot
+- Collapsible left sidebar (shadcn sidebar-07) with icon-only collapse
 - Dashboard top-row metrics:
   - Total Net Worth (sum of `accounts.starting_balance`)
   - Total Monthly Expenses (current month; `expenses.entry_type` = "expense")
   - Total Monthly Available (`monthlyIncome - monthlyExpenses - expectedBudget`)
   - Finance Health Monitor (reserved; UI placeholder)
-- Recent expenses list with merchant and payment method details
+- Recent transactions list with category icons, merchant title, date subtitle, signed amount with currency and directional arrow (↗ income, ↘ expense)
+- USD→COP hover tooltip for currency conversion (animated)
+- Account Balances card with icons and per-account currency tooltips (AstroPay + USD accounts)
+- Credit Cards card with debt totals in COP (USD purchases converted)
 - Bot status monitoring with server health indicators
 - Dark/light/system theme support
 - Responsive design
 
 - Aggregations use UTC month boundaries (`[YYYY-MM-01T00:00:00.000Z, month-endT23:59:59.999Z]`).
 - Income/expense split is driven by `expenses.entry_type` in ["income","INCOME","expense","EXPENSE"].
-- Currency display uses `$` (assumes unified currency; no FX normalization yet).
+- Currency: `$` before numbers and 3-letter code after (e.g., `$1,234 USD`).
+- Credit Cards: amounts always displayed as negative and in COP (e.g., `-$1,234 COP`).
 
 ## Supabase Tables Confirmed
 - `expenses`: includes `entry_type` (income/expense), `income_source`, `account` in addition to standard fields.
@@ -37,6 +42,21 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 - Monthly Income: sum of `amount` where `entry_type` ∈ {income, INCOME} and `created_at` within current UTC month.
 - Net Worth: sum of `accounts.starting_balance` (can be refined to include liabilities/positions later).
 - Expected Budget: attempts to sum one of `planned_amount` | `amount` | `expected_amount` from `budget_items`, falling back to `budgets`; defaults to `0` if none found.
+
+## Transactions, Accounts, and Cards Logic
+- Recent Transactions:
+  - Title: merchant; Subtitle: formatted date.
+  - Left icon: selected by category mapping (groceries, dining, travel, etc.).
+  - Right value: signed amount with currency and directional arrow (↗ income green, ↘ expense custom red tone `rgb(248 113 113 / var(--tw-text-opacity, 1))`).
+  - USD currency shows a hover tooltip with converted COP using live FX.
+- Account Balances:
+  - For each non-credit account, the displayed amount = starting balance + net sum of its transactions in the same currency.
+  - Matching uses case-insensitive substring of `expenses.payment_method` against account name (both directions).
+  - Subtitle shows account currency; USD and “AstroPay” accounts show the hover conversion tooltip.
+- Credit Cards:
+  - Debt is computed from expenses only, converted to COP: each transaction signed by `entry_type` and converted USD→COP.
+  - If no transactions match a card name yet, we fallback to the stored balance converted to COP.
+  - Display format: always negative, `$` symbol before the number and `COP` after (no red color).
 
 ## Database Schema
 - **Table**: `expenses`
@@ -78,8 +98,10 @@ The dashboard follows exact shadcn/ui patterns:
 
 ### Key Components
 1. **Stats Cards**: 4-card grid showing Total Net Worth, Total Monthly Expenses, Total Monthly Available, Finance Health Monitor
-2. **Recent Expenses**: Large card (`xl:col-span-2`) with transaction list
-3. **Bot Status**: Right sidebar with server status, connection info, and instructions
+2. **Recent Transactions**: Card with iconized rows and currency/FX tooltip
+3. **Account Balances**: Card listing accounts with icons, subtitles, and tooltips for USD/AstroPay
+4. **Credit Cards**: Card listing card debts in COP only
+5. **Bot Status**: Moved to bottom section with server status, connection info, and instructions
 
 ## Important Bot Status Features
 - Green pulsing dot for online status (`bg-emerald-500 animate-pulse`)
@@ -98,6 +120,9 @@ The dashboard follows exact shadcn/ui patterns:
 - `src/app/globals.css` - Global styles with OKLCH colors
 - `src/components/ui/` - shadcn/ui components (card, button, badge, etc.)
 - `src/lib/supabase.ts` - Supabase client and types
+ - `src/app/layout.tsx` - Sidebar + providers (TooltipProvider, React Query)
+ - `src/app/providers.tsx` - React Query provider
+ - `src/components/app-sidebar.tsx` and `src/components/ui/sidebar.tsx` - Sidebar integration (sidebar-07)
 
 ## Theme Implementation
 - Theme state managed with useState
@@ -126,17 +151,21 @@ The dashboard follows exact shadcn/ui patterns:
 - Test theme switching functionality
 
 ## Recent Changes
-- UI: Header title alignment fixed — "FinMate Dashboard" now left-aligned; actions sit on the right.
-- Error UX: Added clear inline alert for Supabase fetch failures and improved console messages.
-- Supabase Guard: `SUPABASE_CONFIGURED` exported from `src/lib/supabase.ts`; fetch short-circuits when env vars are missing.
-- Env Setup: `.env` and `.env.local` supported. Use `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for client; keep server-only vars without NEXT_PUBLIC.
-- Colors: Added missing `--destructive-foreground` token in light/dark themes.
-- Tailwind Mapping: Switched Tailwind color config to read raw CSS variables (`var(--...)`) for OKLCH compatibility instead of `hsl(var(--...))`.
-- Dev Server: Defaults to port 3000; if busy, we use 3001.
-- Dashboard Metrics: Replaced first-row cards with Net Worth, Monthly Expenses, Monthly Available, and Health Monitor placeholder while preserving shadcn/ui design.
-- Supabase Aggregates: Monthly income/expenses read from `expenses` by `entry_type`; net worth from `accounts.starting_balance`; expected budget auto-detected from `budget_items`/`budgets` if present.
-- Type Safety: Removed `any` usage in metric reducers; added lightweight row types and safe Record indexing to satisfy ESLint (`@typescript-eslint/no-explicit-any`).
-- Build: Fixed Vercel lint failures by enforcing explicit types in `src/app/page.tsx`.
+- Sidebar: Installed and integrated shadcn `sidebar-07` preset; wired into global layout.
+- Recent Transactions: Renamed section, added category icons, merchant/date layout, signed amounts, and directional arrows; adjusted expense red to `rgb(248 113 113 / var(--tw-text-opacity, 1))`.
+- FX Tooltip: Added animated USD→COP tooltip on hover using shadcn Tooltip + React Query; shared cache; also used for AstroPay and USD accounts.
+- tailwindcss-animate: Installed and enabled for shadcn animations; wrapped app with `TooltipProvider`.
+- Account Balances: New card with icons and subtitles; amounts now computed as starting balance + net same-currency transactions.
+- Credit Cards: New card with icons and subtitles; debt computed from transactions converted to COP (USD purchases converted). Always shown as negative, format `$1,234 COP` with leading minus.
+- Bot Status: Moved to bottom section to make room for the two new cards.
+- Lint/Build: Fixed ESLint issues (empty object type, unused imports) and ensured type checks pass on Vercel.
+
+## Data Access and Endpoints
+- Supabase client-side queries are used directly via `@supabase/supabase-js`. No custom API endpoints were added; RLS governs access.
+- External FX API: `https://open.er-api.com/v6/latest/USD` is called client-side to resolve USD→COP. Results are cached for 5 minutes with React Query.
+
+## Matching Heuristics
+- Accounts and cards are matched to transactions using `expenses.payment_method` compared to the account/card name (case-insensitive, substring either way). An alias map can be added if needed to improve matching.
 
 ## Environment Variables
 Create `.env.local` for local development (not committed):
