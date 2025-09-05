@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronsUpDown, Plus } from "lucide-react"
+import { ChevronsUpDown, Plus, LayoutDashboard } from "lucide-react"
 
 import {
   DropdownMenu,
@@ -20,21 +20,43 @@ import {
 } from "@/components/ui/sidebar"
 
 export function TeamSwitcher({
-  teams,
+  teams = [],
+  title = "Dashboard",
+  subtitle = "Personal",
+  icon: Icon = LayoutDashboard,
 }: {
-  teams: {
+  teams?: {
     name: string
     logo: React.ElementType
     plan: string
   }[]
+  title?: string
+  subtitle?: string
+  icon?: React.ElementType
 }) {
   const { isMobile } = useSidebar()
   const [activeTeam, setActiveTeam] = React.useState(teams[0])
 
-  if (!activeTeam) {
-    return null
+  // Single-person mode: no teams list, just icon + title + subtitle
+  if (!activeTeam && teams.length === 0) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg">
+            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Icon className="size-4" />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-semibold">{title}</span>
+              <span className="truncate text-xs">{subtitle}</span>
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
   }
 
+  // Multi-team mode: keep dropdown
   return (
     <SidebarMenu>
       <SidebarMenuItem>

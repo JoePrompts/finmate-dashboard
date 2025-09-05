@@ -160,6 +160,21 @@ The dashboard follows exact shadcn/ui patterns:
 - Bot Status: Moved to bottom section to make room for the two new cards.
 - Lint/Build: Fixed ESLint issues (empty object type, unused imports) and ensured type checks pass on Vercel.
 
+### New Transactions Page
+- Route: `/transactions` with a simple header (SidebarTrigger + title) and persistent Refresh and Theme settings controls.
+- Theme persistence: Theme choice (light/dark/system) is stored in `localStorage` and applied on load (Dashboard + Transactions).
+- Data table: Full transaction list with columns: Merchant, Amount (signed; expense red), Date, Account, Credit (Yes/No), Category, Type.
+  - Currency column removed; amount shows symbol and, for USD, an inline “USD” tooltip that converts to COP with live FX (open.er-api.com) — same behavior as Dashboard.
+  - Row spacing increased for readability; table header has a contrasting background (`bg-muted` with `overflow-hidden` container) to preserve rounded corners.
+
+### Sidebar Navigation
+- Added a new “Developing” group at the top with links to `Dashboard` (`/`) and `Transactions` (`/transactions`).
+- Sidebar header simplified for single-user: shows FinMate brand (icon + title + subtitle) using `TeamSwitcher` in single-person mode.
+
+### Dashboard Header
+- Title simplified to “Dashboard” (removed “FinMate” prefix).
+- Consistent Refresh and Theme controls retained.
+
 ## Data Access and Endpoints
 - Supabase client-side queries are used directly via `@supabase/supabase-js`. No custom API endpoints were added; RLS governs access.
 - External FX API: `https://open.er-api.com/v6/latest/USD` is called client-side to resolve USD→COP. Results are cached for 5 minutes with React Query.

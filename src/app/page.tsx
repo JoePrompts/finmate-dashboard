@@ -15,7 +15,6 @@ import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import {
   RefreshCw,
-  Activity,
   AlertCircle,
   Settings,
   Moon,
@@ -155,15 +154,24 @@ export default function Dashboard() {
     }
   }
 
+  // Load saved theme preference once on mount
   useEffect(() => {
-    // Apply theme
+    try {
+      const saved = localStorage.getItem('theme')
+      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+        setTheme(saved)
+      }
+    } catch {}
+  }, [])
+
+  // Apply and persist theme
+  useEffect(() => {
     const root = document.documentElement
     if (theme === 'dark') {
       root.classList.add('dark')
     } else if (theme === 'light') {
       root.classList.remove('dark')
     } else {
-      // System theme
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       if (mediaQuery.matches) {
         root.classList.add('dark')
@@ -171,6 +179,9 @@ export default function Dashboard() {
         root.classList.remove('dark')
       }
     }
+    try {
+      localStorage.setItem('theme', theme)
+    } catch {}
   }, [theme])
 
   useEffect(() => {
@@ -519,10 +530,7 @@ export default function Dashboard() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1">
-            <div className="relative">
-              <Activity className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <div className="pl-8 text-sm font-medium">FinMate Dashboard</div>
-            </div>
+            <div className="pl-0 text-sm font-medium">Dashboard</div>
           </div>
           <Button className="ml-auto" variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="h-4 w-4" />
