@@ -145,7 +145,7 @@ export default function TransactionsPage() {
     return (
       <Tooltip open={open} onOpenChange={(v)=>{ setOpen(v); if (v) refetch(); }}>
         <TooltipTrigger asChild>
-          <span className="ml-1 underline decoration-dotted underline-offset-2 cursor-default text-muted-foreground">USD</span>
+          <span className="ml-1 underline decoration-dotted underline-offset-2 cursor-default">USD</span>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" className="w-56 text-sm">
           {open && isLoading && <div className="text-muted-foreground">Loading FX…</div>}
@@ -242,7 +242,13 @@ export default function TransactionsPage() {
                       <TableCell className="whitespace-nowrap">{r.merchant}</TableCell>
                       <TableCell className="text-right font-medium" style={ isExpense ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {}}>
                         {isIncome ? '+' : isExpense ? '-' : ''}{symbol}{abs.toLocaleString()}
-                        {r.currency === 'USD' ? <UsdToCop amount={abs} /> : null}
+                        {r.currency === 'USD' ? (
+                          <UsdToCop amount={abs} />
+                        ) : r.currency === 'COP' ? (
+                          <span className="ml-1">COP</span>
+                        ) : (
+                          <span className="ml-1">{r.currency}</span>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{dateLabel}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.account}</TableCell>
