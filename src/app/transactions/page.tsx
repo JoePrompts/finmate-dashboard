@@ -67,8 +67,9 @@ export default function TransactionsPage() {
         try {
           const { data: accts, error: aerr } = await supabase.from('accounts').select('*')
           if (!aerr && accts) {
+            type AccountLite = { name?: string | null; type?: string | null; account_type?: string | null; is_credit_card?: boolean | null }
             const set = new Set<string>()
-            for (const r of accts as any[]) {
+            for (const r of accts as AccountLite[]) {
               const name = String(r.name ?? '').toLowerCase()
               const t = String(r.type ?? r.account_type ?? '').toLowerCase()
               const byFlag = r.is_credit_card === true
@@ -80,7 +81,7 @@ export default function TransactionsPage() {
             }
             setCreditNames(set)
           }
-        } catch (e) {
+        } catch {
           // Ignore credit detection failure
         }
       } catch (err: unknown) {
