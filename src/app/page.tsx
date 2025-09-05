@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import {
@@ -218,7 +218,7 @@ export default function Dashboard() {
         created_at: string
         entry_type?: string | null
       }
-      type AccountLite = { starting_balance: number | string | null }
+      // removed unused AccountLite type per lint
       type BudgetRecord = Record<string, unknown>
 
       // Monthly Expenses (entry_type = 'expense')
