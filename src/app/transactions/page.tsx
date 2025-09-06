@@ -15,6 +15,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 
 export default function TransactionsPage() {
   const { theme, setTheme } = useTheme()
@@ -76,7 +85,7 @@ export default function TransactionsPage() {
 
   const data = useMemo(() => {
     const norm = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase()
-    return rows.map((r) => {
+    const items = rows.map((r) => {
       const amount = Number(r.amount)
       const type = String(r.entry_type || '').toLowerCase()
       // Sign based on entry_type if present
@@ -91,12 +100,15 @@ export default function TransactionsPage() {
           if (pm.includes(name) || name.includes(pm)) { isCredit = true; break }
         }
       }
+      const when = r.date || r.created_at
+      const ts = when ? Date.parse(when) : 0
       return {
         id: r.id,
         merchant: r.merchant || '—',
         amount: signed,
         currency: (r.currency || 'USD').toUpperCase(),
-        date: r.date || r.created_at,
+        date: when,
+        ts,
         account: r.payment_method || r.account || '—',
         isCredit,
         category: r.category || '—',
@@ -104,7 +116,36 @@ export default function TransactionsPage() {
         description: r.description || '',
       }
     })
+    items.sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    return items
   }, [rows, creditNames])
+
+  // Pagination state (10 per page)
+  const perPage = 10
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(data.length / perPage))
+  const start = (page - 1) * perPage
+  const end = start + perPage
+  const pageRows = data.slice(start, end)
+
+  // Keep page within bounds when data changes
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  function buildPages(current: number, total: number): (number | "dots")[] {
+    const pages: (number | "dots")[] = []
+    const add = (n: number | "dots") => pages.push(n)
+    const window = 1
+    const left = Math.max(2, current - window)
+    const right = Math.min(total - 1, current + window)
+    add(1)
+    if (left > 2) add("dots")
+    for (let i = left; i <= right; i++) add(i)
+    if (right < total - 1) add("dots")
+    if (total > 1) add(total)
+    return pages
+  }
 
   function UsdToCop({ amount }: { amount: number }) {
     const [open, setOpen] = useState(false)
@@ -196,22 +237,23 @@ export default function TransactionsPage() {
             ))}
           </div>
         ) : (
+          <>
           <div className="rounded-md border overflow-hidden">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader className="bg-muted [&_th]:text-foreground">
                 <TableRow>
                   <TableHead>Merchant</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Credit</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Type</TableHead>
-                  
+                  <TableHead className="text-right w-[160px]">Amount</TableHead>
+                  <TableHead className="w-[150px]">Date</TableHead>
+                  <TableHead className="w-[200px]">Account</TableHead>
+                  <TableHead className="w-[90px]">Credit</TableHead>
+                  <TableHead className="w-[150px]">Category</TableHead>
+                  <TableHead className="w-[110px]">Type</TableHead>
+                
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((r) => {
+                {pageRows.map((r) => {
                   const d = r.date ? new Date(r.date) : null
                   const dateLabel = d ? d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''
                   const isIncome = r.type.toLowerCase() === 'income' || r.amount >= 0
@@ -223,7 +265,7 @@ export default function TransactionsPage() {
                     <TableRow key={r.id} className="[&>td]:py-3">
                       <TableCell className="whitespace-nowrap">{r.merchant}</TableCell>
                       <TableCell
-                        className={cn("text-right font-medium", isIncome && "text-emerald-600")}
+                        className={cn("text-right font-medium tabular-nums", isIncome && "text-emerald-600")}
                         style={ isExpense ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {} }
                       >
                         {isIncome ? '+' : isExpense ? '-' : ''}{symbol}{abs.toLocaleString()}
@@ -236,9 +278,9 @@ export default function TransactionsPage() {
                         )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{dateLabel}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.account}</TableCell>
+                      <TableCell className="whitespace-nowrap truncate max-w-[200px]">{r.account}</TableCell>
                       <TableCell>{r.isCredit ? 'Yes' : 'No'}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.category}</TableCell>
+                      <TableCell className="whitespace-nowrap truncate max-w-[150px]">{r.category}</TableCell>
                       <TableCell>{r.type}</TableCell>
                     </TableRow>
                   )
@@ -247,6 +289,40 @@ export default function TransactionsPage() {
               <TableCaption>{data.length} transaction{data.length === 1 ? '' : 's'}</TableCaption>
             </Table>
           </div>
+
+          {/* Pagination controls */}
+          <Pagination className="mt-4">
+            <PaginationContent className="w-full items-center justify-center">
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(1, p - 1)) }}
+                />
+              </PaginationItem>
+              {buildPages(page, pageCount).map((p, idx) => (
+                <PaginationItem key={idx}>
+                  {p === "dots" ? (
+                    <PaginationEllipsis />
+                  ) : (
+                    <PaginationLink
+                      href="#"
+                      isActive={p === page}
+                      onClick={(e) => { e.preventDefault(); setPage(p as number) }}
+                    >
+                      {p}
+                    </PaginationLink>
+                  )}
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(pageCount, p + 1)) }}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+          </>
         )}
       </main>
     </>
