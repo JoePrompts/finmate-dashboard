@@ -13,13 +13,14 @@ import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQuery } from "@tanstack/react-query"
+import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
 
 export default function TransactionsPage() {
   const { theme, setTheme } = useTheme()
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  type ExpenseRow = Expense & { entry_type?: string | null }
+  type ExpenseRow = Expense & { entry_type?: string | null; account?: string | null }
   const [rows, setRows] = useState<ExpenseRow[]>([])
 
   // Credit card names set from accounts
@@ -82,7 +83,8 @@ export default function TransactionsPage() {
       const sign = type === 'income' ? 1 : type === 'expense' ? -1 : amount >= 0 ? 1 : -1
       const abs = Math.abs(amount)
       const signed = sign * abs
-      const pm = norm(r.payment_method)
+      const pmRaw = r.payment_method || r.account || ''
+      const pm = norm(pmRaw)
       let isCredit = false
       if (pm) {
         for (const name of creditNames) {
@@ -95,7 +97,7 @@ export default function TransactionsPage() {
         amount: signed,
         currency: (r.currency || 'USD').toUpperCase(),
         date: r.date || r.created_at,
-        account: r.payment_method || '—',
+        account: r.payment_method || r.account || '—',
         isCredit,
         category: r.category || '—',
         type: type ? (type[0].toUpperCase() + type.slice(1)) : (signed >= 0 ? 'Income' : 'Expense'),
@@ -220,7 +222,10 @@ export default function TransactionsPage() {
                   return (
                     <TableRow key={r.id} className="[&>td]:py-3">
                       <TableCell className="whitespace-nowrap">{r.merchant}</TableCell>
-                      <TableCell className="text-right font-medium" style={ isExpense ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {}}>
+                      <TableCell
+                        className={cn("text-right font-medium", isIncome && "text-emerald-600")}
+                        style={ isExpense ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {} }
+                      >
                         {isIncome ? '+' : isExpense ? '-' : ''}{symbol}{abs.toLocaleString()}
                         {r.currency === 'USD' ? (
                           <UsdToCop amount={abs} />
