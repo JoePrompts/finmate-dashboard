@@ -13,9 +13,10 @@ import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQuery } from "@tanstack/react-query"
+import { useTheme } from "@/app/providers"
 
 export default function TransactionsPage() {
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  const { theme, setTheme } = useTheme()
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   type ExpenseRow = Expense & { entry_type?: string | null }
@@ -24,28 +25,7 @@ export default function TransactionsPage() {
   // Credit card names set from accounts
   const [creditNames, setCreditNames] = useState<Set<string>>(new Set())
 
-  // Load theme preference
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('theme')
-      if (saved === 'light' || saved === 'dark' || saved === 'system') setTheme(saved)
-    } catch {}
-  }, [])
-
-  // Apply and persist theme
-  useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else if (theme === 'light') {
-      root.classList.remove('dark')
-    } else {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      if (mediaQuery.matches) root.classList.add('dark')
-      else root.classList.remove('dark')
-    }
-    try { localStorage.setItem('theme', theme) } catch {}
-  }, [theme])
+  // Theme logic is managed by ThemeProvider (see src/app/providers.tsx)
 
   useEffect(() => {
     async function fetchAll() {

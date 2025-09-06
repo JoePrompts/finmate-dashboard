@@ -10,9 +10,11 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
+import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
+import { useTheme } from "@/app/providers"
 import {
   RefreshCw,
   AlertCircle,
@@ -42,7 +44,7 @@ export default function Dashboard() {
   type ExpenseRow = Expense & { entry_type?: string | null }
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  const { theme, setTheme } = useTheme()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [netWorth, setNetWorth] = useState(0)
   const [monthlyExpenses, setMonthlyExpenses] = useState(0)
@@ -154,35 +156,7 @@ export default function Dashboard() {
     }
   }
 
-  // Load saved theme preference once on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('theme')
-      if (saved === 'light' || saved === 'dark' || saved === 'system') {
-        setTheme(saved)
-      }
-    } catch {}
-  }, [])
-
-  // Apply and persist theme
-  useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else if (theme === 'light') {
-      root.classList.remove('dark')
-    } else {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      if (mediaQuery.matches) {
-        root.classList.add('dark')
-      } else {
-        root.classList.remove('dark')
-      }
-    }
-    try {
-      localStorage.setItem('theme', theme)
-    } catch {}
-  }, [theme])
+  // Theme logic is managed by ThemeProvider (see src/app/providers.tsx)
 
   useEffect(() => {
     async function fetchExpenses() {
@@ -197,7 +171,7 @@ export default function Dashboard() {
           .from('expenses')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(10)
+          .limit(5)
 
         if (error) throw error
 
@@ -616,12 +590,6 @@ export default function Dashboard() {
                 <CardTitle>Recent Transactions</CardTitle>
                 <CardDescription>Your latest transactions from the FinMate bot.</CardDescription>
               </div>
-              <Button asChild size="sm" className="ml-auto gap-1">
-                <a href="#">
-                  View All
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Button>
             </CardHeader>
             <CardContent>
               {expenses.length === 0 ? (
@@ -638,7 +606,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {expenses.map((tx) => {
+                  {expenses.slice(0, 5).map((tx) => {
                     const type = String(tx.entry_type || "").toLowerCase()
                     const isIncome = type === 'income'
                     const isExpense = type === 'expense'
@@ -686,6 +654,14 @@ export default function Dashboard() {
                   })}
                 </div>
               )}
+
+              {/* View all button moved to bottom, full width with subtle hover animation */}
+              <Button asChild className="w-full mt-4 group transition-all duration-150 hover:shadow-md hover:-translate-y-0.5">
+                <Link href="/transactions" className="flex items-center justify-center gap-2">
+                  <span>View All</span>
+                  <ArrowUpRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+                </Link>
+              </Button>
             </CardContent>
           </Card>
           <Card x-chunk="dashboard-01-chunk-6">

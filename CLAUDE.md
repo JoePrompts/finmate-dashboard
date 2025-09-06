@@ -19,7 +19,7 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
   - Total Monthly Expenses (current month; `expenses.entry_type` = "expense")
   - Total Monthly Available (`monthlyIncome - monthlyExpenses - expectedBudget`)
   - Finance Health Monitor (reserved; UI placeholder)
-- Recent transactions list with category icons, merchant title, date subtitle, signed amount with currency and directional arrow (↗ income, ↘ expense)
+- Recent transactions list (last 5) with category icons, merchant title, date subtitle, signed amount with currency and directional arrow (↗ income, ↘ expense). A full-width “View All” button at the bottom navigates to `/transactions` via SPA (Next Link) with a subtle hover animation.
 - USD→COP hover tooltip for currency conversion (animated)
 - Account Balances card with icons and per-account currency tooltips (AstroPay + USD accounts)
 - Credit Cards card with debt totals in COP (USD purchases converted)
@@ -126,8 +126,8 @@ The dashboard follows exact shadcn/ui patterns:
 
 ## Theme Implementation
 - Theme state managed with useState
-- Manual DOM manipulation for theme switching
-- System preference detection with matchMedia API
+- ThemeProvider centralizes theme switching, applies the `dark` class to `<html>`, persists to `localStorage`, and listens to system changes when in `system` mode.
+- System preference detection with `matchMedia` when in `system` mode
 - Three modes: light, dark, system
 
 ## Responsive Breakpoints
@@ -159,10 +159,12 @@ The dashboard follows exact shadcn/ui patterns:
 - Credit Cards: New card with icons and subtitles; debt computed from transactions converted to COP (USD purchases converted). Always shown as negative, format `$1,234 COP` with leading minus.
 - Bot Status: Moved to bottom section to make room for the two new cards.
 - Lint/Build: Fixed ESLint issues (empty object type, unused imports) and ensured type checks pass on Vercel.
+- Theme: Centralized theme logic into a ThemeProvider; fixed persistence so saved preference isn’t clobbered on first mount; listens to system changes in `system` mode.
+- Dashboard → Recent Transactions: Limited to last 5 items, moved “View All” to the bottom as a full-width button with hover animation; uses Next.js `Link` for SPA navigation to `/transactions`.
 
 ### New Transactions Page
 - Route: `/transactions` with a simple header (SidebarTrigger + title) and persistent Refresh and Theme settings controls.
-- Theme persistence: Theme choice (light/dark/system) is stored in `localStorage` and applied on load (Dashboard + Transactions).
+- Theme persistence: Managed by ThemeProvider — preference stored in `localStorage`, applied globally, and reacts to system changes when in `system` mode.
 - Data table: Full transaction list with columns: Merchant, Amount (signed; expense red), Date, Account, Credit (Yes/No), Category, Type.
   - Currency column removed; amount shows symbol and, for USD, an inline “USD” tooltip that converts to COP with live FX (open.er-api.com) — same behavior as Dashboard.
   - Row spacing increased for readability; table header has a contrasting background (`bg-muted` with `overflow-hidden` container) to preserve rounded corners.
