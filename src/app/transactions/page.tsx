@@ -34,10 +34,17 @@ import {
 } from "@/components/ui/sheet"
 
 export default function TransactionsPage() {
-  const { theme, setTheme } = useTheme()
+  const { setTheme } = useTheme()
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  type ExpenseRow = Expense & { entry_type?: string | null; account?: string | null }
+  type ExpenseRow = Expense & {
+    entry_type?: string | null
+    account?: string | null
+    edited?: boolean | null
+    edited_at?: string | null
+    updated_at?: string | null
+    edit_history?: unknown
+  }
   const [rows, setRows] = useState<ExpenseRow[]>([])
 
   // Credit card names set from accounts
@@ -368,8 +375,8 @@ export default function TransactionsPage() {
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Merchant</span><span className="truncate max-w-[260px] text-right">{raw?.merchant || '—'}</span></div>
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Category</span><span className="truncate max-w-[260px] text-right">{raw?.category || '—'}</span></div>
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment Method</span><span className="truncate max-w-[260px] text-right">{raw?.payment_method || '—'}</span></div>
-                                {typeof (raw as any)?.account !== 'undefined' && (
-                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Account</span><span className="truncate max-w-[260px] text-right">{(raw as any).account || '—'}</span></div>
+                                {typeof raw?.account !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Account</span><span className="truncate max-w-[260px] text-right">{raw?.account || '—'}</span></div>
                                 )}
                                 {typeof raw?.entry_type !== 'undefined' && (
                                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Entry Type</span><span>{raw?.entry_type || '—'}</span></div>
@@ -385,32 +392,33 @@ export default function TransactionsPage() {
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Date</span><span>{raw?.date ? new Date(raw.date).toLocaleString() : '—'}</span></div>
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{raw?.created_at ? new Date(raw.created_at).toLocaleString() : '—'}</span></div>
                                 <div className="flex items-center justify-between"><span className="text-muted-foreground">User ID</span><span className="font-mono text-xs truncate max-w-[260px] text-right">{raw?.user_id || '—'}</span></div>
-                                {typeof (raw as any)?.edited !== 'undefined' && (
-                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited</span><span>{String((raw as any).edited)}</span></div>
+                                {typeof raw?.edited !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited</span><span>{String(raw?.edited)}</span></div>
                                 )}
-                                {typeof (raw as any)?.edited_at !== 'undefined' && (
-                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited At</span><span>{(raw as any).edited_at ? new Date((raw as any).edited_at as any).toLocaleString() : '—'}</span></div>
+                                {typeof raw?.edited_at !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited At</span><span>{raw?.edited_at ? new Date(raw.edited_at).toLocaleString() : '—'}</span></div>
                                 )}
-                                {typeof (raw as any)?.updated_at !== 'undefined' && (
-                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Updated At</span><span>{(raw as any).updated_at ? new Date((raw as any).updated_at as any).toLocaleString() : '—'}</span></div>
+                                {typeof raw?.updated_at !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Updated At</span><span>{raw?.updated_at ? new Date(raw.updated_at).toLocaleString() : '—'}</span></div>
                                 )}
                                 {/* Render any other unknown fields for completeness */}
                                 {(() => {
                                   const known = new Set([
-                                    'id','amount','currency','merchant','category','payment_method','account','entry_type','description','date','created_at','user_id','edited','edited_at','updated_at'
+                                    'id','amount','currency','merchant','category','payment_method','account','entry_type','description','date','created_at','user_id','edited','edited_at','updated_at','edit_history'
                                   ])
-                                  const entries = Object.entries((raw as any) || {}).filter(([k]) => !known.has(k))
+                                  const rawRecord: Record<string, unknown> = (raw ?? {}) as unknown as Record<string, unknown>
+                                  const entries = Object.entries(rawRecord).filter(([k]) => !known.has(k))
                                   if (!entries.length) return null
                                   return entries.map(([k, v]) => (
                                     <div key={k} className="flex items-center justify-between">
                                       <span className="text-muted-foreground">{k}</span>
-                                      <span className="truncate max-w-[260px] text-right">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                                      <span className="truncate max-w-[260px] text-right">{typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}</span>
                                     </div>
                                   ))
                                 })()}
                                 {/* Edit history (if available) */}
                                 {(() => {
-                                  const eh = (raw as any)?.edit_history ?? (raw as any)?.edits ?? (raw as any)?.history ?? (raw as any)?.editHistory
+                                  const eh = raw?.edit_history
                                   if (typeof eh === 'undefined') return null
                                   return (
                                     <div className="mt-2">
@@ -420,9 +428,9 @@ export default function TransactionsPage() {
                                       ) : (
                                         <pre className="max-h-[50vh] overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(eh, null, 2)}</pre>
                                       )}
-                                  </div>
-                                )
-                              })()}
+                                    </div>
+                                  )
+                                })()}
                               </div>
                               {/* Raw JSON for full visibility */}
                               <div className="mt-3">

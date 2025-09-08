@@ -44,7 +44,7 @@ export default function Dashboard() {
   type ExpenseRow = Expense & { entry_type?: string | null }
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
-  const { theme, setTheme } = useTheme()
+  const { setTheme } = useTheme()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [netWorth, setNetWorth] = useState(0)
   const [monthlyExpenses, setMonthlyExpenses] = useState(0)
