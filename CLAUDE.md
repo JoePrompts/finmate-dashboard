@@ -169,14 +169,18 @@ The dashboard follows exact shadcn/ui patterns:
   - Currency column removed; amount shows symbol and, for USD, an inline “USD” tooltip that converts to COP with live FX (open.er-api.com) — same behavior as Dashboard.
   - Row spacing increased for readability; table header has a contrasting background (`bg-muted` with `overflow-hidden` container) to preserve rounded corners.
   - Sorting: Primarily by transaction date (descending by day), with a tie‑breaker on `created_at` so the most recently added shows first for the same day.
-  - Pagination: Shows 10 rows per page with shadcn‑style pagination controls (Previous, numbers, Next) centered below the table.
-  - Alignment/stability: Fixed table layout with explicit column widths, `tabular-nums` for amounts, truncation for long text, and `scrollbar-gutter: stable` to prevent layout shift.
+- Pagination: Shows 10 rows per page with shadcn‑style pagination controls (Previous, numbers, Next) centered below the table.
+- Alignment/stability: Fixed table layout with explicit column widths, `tabular-nums` for amounts, truncation for long text, and `scrollbar-gutter: stable` to prevent layout shift.
   - Details Sheet: A rightmost Eye icon opens a shadcn Sheet per row with:
     - Summary: amount (income green/expense red), local date/time, account, credit flag, category, type, full description.
     - Database Fields: raw fields from Supabase including `id`, `amount`, `currency`, `merchant`, `category`, `payment_method`, `account` (if present), `entry_type` (if present), `description` (full, wrapped), `date`, `created_at`, `user_id`, `edited`, `edited_at`, `updated_at` when present.
     - Edit History: renders `edit_history` (if present) as pretty JSON or raw text in a scrollable block.
     - Raw Record: pretty‑printed JSON of the entire row for debugging.
     - UX: Wider sheet on `sm+` (640px), vertical scroll enabled; content uses tight grid, no truncation for long text blocks.
+  - Filters: Client‑side filters above the table
+    - Account filter via Dropdown (lists unique accounts; shows active filter badge; resets pagination on change)
+    - Date range filter via shadcn Popover + Calendar (react‑day‑picker) showing two months with range selection; Clear/Done actions; selected range displays on the trigger and resets pagination on change
+  - Header: Sticky opaque navbar for the Transactions page (`sticky top-0 z-50 bg-background` with backdrop blur support) to prevent content showing through when scrolling
 
 ### Sidebar Navigation
 - Added a new “Developing” group at the top with links to `Dashboard` (`/`) and `Transactions` (`/transactions`).

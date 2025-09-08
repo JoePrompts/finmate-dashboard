@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Monitor, Moon, RefreshCw, Settings, Sun, Eye } from "lucide-react"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -15,6 +15,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
+import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import type { DateRange } from "react-day-picker"
 import {
   Pagination,
   PaginationContent,
@@ -46,7 +50,19 @@ export default function TransactionsPage() {
     edit_history?: unknown
   }
   const [rows, setRows] = useState<ExpenseRow[]>([])
+  const [accountFilter, setAccountFilter] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState<string | null>(null)
+  const [dateTo, setDateTo] = useState<string | null>(null)
+  const [dateOpen, setDateOpen] = useState(false)
+  const [range, setRange] = useState<DateRange | undefined>(undefined)
 
+  function fmt(d: Date | undefined | null) {
+    if (!d) return null
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  }
   // Credit card names set from accounts
   const [creditNames, setCreditNames] = useState<Set<string>>(new Set())
 
@@ -145,13 +161,35 @@ export default function TransactionsPage() {
     return items
   }, [rows, creditNames])
 
+  // Unique account options derived from data
+  const accountOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of data) {
+      const acc = (r.account || '').trim()
+      if (acc) set.add(acc)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [data])
+
+  // Apply filters
+  const filtered = useMemo(() => {
+    const fromStart = dateFrom ? (() => { const [y,m,d] = dateFrom.split('-').map(Number); return new Date(y, (m||1)-1, d||1).getTime() })() : null
+    const toEnd = dateTo ? (() => { const [y,m,d] = dateTo.split('-').map(Number); return new Date(y, (m||1)-1, d||1, 23,59,59,999).getTime() })() : null
+    return data.filter((r) => {
+      if (accountFilter && (r.account || '').trim() !== accountFilter) return false
+      if (fromStart !== null && (r.ts || 0) < fromStart) return false
+      if (toEnd !== null && (r.ts || 0) > toEnd) return false
+      return true
+    })
+  }, [data, accountFilter, dateFrom, dateTo])
+
   // Pagination state (10 per page)
   const perPage = 10
   const [page, setPage] = useState(1)
-  const pageCount = Math.max(1, Math.ceil(data.length / perPage))
+  const pageCount = Math.max(1, Math.ceil(filtered.length / perPage))
   const start = (page - 1) * perPage
   const end = start + perPage
-  const pageRows = data.slice(start, end)
+  const pageRows = filtered.slice(start, end)
 
   // Map of raw DB rows by id for full-field rendering in the Sheet
   const rowById = useMemo(() => {
@@ -164,6 +202,11 @@ export default function TransactionsPage() {
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
   }, [page, pageCount])
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [accountFilter, dateFrom, dateTo])
 
   function buildPages(current: number, total: number): (number | "dots")[] {
     const pages: (number | "dots")[] = []
@@ -218,7 +261,7 @@ export default function TransactionsPage() {
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b bg-background px-4 md:px-6 sticky top-0">
+      <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b sticky top-0 z-50 bg-background supports-[backdrop-filter]:bg-background/80 backdrop-blur px-4 md:px-6">
         <div className="flex w-full items-center gap-4 md:gap-2 lg:gap-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
@@ -270,6 +313,78 @@ export default function TransactionsPage() {
           </div>
         ) : (
           <>
+          {/* Filters */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-sm text-muted-foreground">Filters</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {accountFilter ? (
+                <Badge variant="secondary" className="max-w-[240px] truncate" title={accountFilter}>
+                  Account: {accountFilter}
+                </Badge>
+              ) : null}
+              {(dateFrom || dateTo) ? (
+                <Badge variant="secondary" className="max-w-[260px] truncate" title={`${dateFrom ?? '…'} → ${dateTo ?? '…'}`}>
+                  Date: {dateFrom ?? '…'} → {dateTo ?? '…'}
+                </Badge>
+              ) : null}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    {accountFilter ? 'Account: ' + accountFilter : 'Filter by account'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Account</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => setAccountFilter(null)}>All accounts</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {accountOptions.length === 0 ? (
+                    <DropdownMenuItem disabled>No accounts</DropdownMenuItem>
+                  ) : (
+                    accountOptions.map((name) => (
+                      <DropdownMenuItem key={name} onClick={() => setAccountFilter(name)}>
+                        {name}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    {dateFrom || dateTo ? (
+                      `Date: ${dateFrom ?? '…'} → ${dateTo ?? '…'}`
+                    ) : (
+                      'Filter by date'
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-auto p-0">
+                  <div className="p-3">
+                    <Calendar
+                      mode="range"
+                      numberOfMonths={2}
+                      selected={range}
+                      onSelect={(v) => {
+                        setRange(v)
+                        setDateFrom(fmt(v?.from ?? null))
+                        setDateTo(fmt(v?.to ?? null))
+                      }}
+                      initialFocus
+                    />
+                    <div className="flex items-center justify-end gap-2 p-2 pt-0">
+                      {(dateFrom || dateTo) && (
+                        <Button variant="outline" size="sm" onClick={() => { setRange(undefined); setDateFrom(null); setDateTo(null) }}>
+                          Clear
+                        </Button>
+                      )}
+                      <Button size="sm" onClick={() => setDateOpen(false)}>Done</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          
           <div className="rounded-md border overflow-hidden">
             <Table className="table-fixed">
               <TableHeader className="bg-muted [&_th]:text-foreground">
@@ -446,7 +561,10 @@ export default function TransactionsPage() {
                   )
                 })}
               </TableBody>
-              <TableCaption>{data.length} transaction{data.length === 1 ? '' : 's'}</TableCaption>
+              <TableCaption>
+                {filtered.length} transaction{filtered.length === 1 ? '' : 's'}
+                {accountFilter ? ` • Account: ${accountFilter}` : ''}
+              </TableCaption>
             </Table>
           </div>
 
