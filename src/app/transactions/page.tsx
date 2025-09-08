@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Monitor, Moon, RefreshCw, Settings, Sun } from "lucide-react"
+import { Monitor, Moon, RefreshCw, Settings, Sun, Eye } from "lucide-react"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
@@ -24,6 +24,14 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 
 export default function TransactionsPage() {
   const { theme, setTheme } = useTheme()
@@ -137,6 +145,13 @@ export default function TransactionsPage() {
   const start = (page - 1) * perPage
   const end = start + perPage
   const pageRows = data.slice(start, end)
+
+  // Map of raw DB rows by id for full-field rendering in the Sheet
+  const rowById = useMemo(() => {
+    const m = new Map<string, ExpenseRow>()
+    for (const r of rows) m.set(r.id, r)
+    return m
+  }, [rows])
 
   // Keep page within bounds when data changes
   useEffect(() => {
@@ -259,11 +274,15 @@ export default function TransactionsPage() {
                   <TableHead className="w-[90px]">Credit</TableHead>
                   <TableHead className="w-[150px]">Category</TableHead>
                   <TableHead className="w-[110px]">Type</TableHead>
+                  <TableHead className="w-[56px] text-right">
+                    <span className="sr-only">View</span>
+                  </TableHead>
                 
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageRows.map((r) => {
+                  const raw = rowById.get(r.id)
                   const d = r.date ? new Date(r.date) : null
                   const dateLabel = d ? d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''
                   const isIncome = r.type.toLowerCase() === 'income' || r.amount >= 0
@@ -292,6 +311,129 @@ export default function TransactionsPage() {
                       <TableCell>{r.isCredit ? 'Yes' : 'No'}</TableCell>
                       <TableCell className="whitespace-nowrap truncate max-w-[150px]">{r.category}</TableCell>
                       <TableCell>{r.type}</TableCell>
+                      <TableCell className="text-right">
+                        <Sheet>
+                          <SheetTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="View details">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="right" className="w-[380px] max-w-[380px] sm:w-[640px] sm:max-w-[640px] overflow-y-auto">
+                            <SheetHeader>
+                              <SheetTitle>Transaction Details</SheetTitle>
+                              <SheetDescription>{r.merchant}</SheetDescription>
+                            </SheetHeader>
+                            <div className="mt-4 grid gap-3 text-sm pr-1 pb-6">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Amount</span>
+                              <span className={cn("font-medium tabular-nums", (r.type.toLowerCase()==='income'||r.amount>=0) && "text-emerald-600")} style={(r.type.toLowerCase()==='expense'||r.amount<0) ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {}}>
+                                {(r.amount>=0?'+':'-')}{r.currency === 'USD' ? '$' : ''}{Math.abs(r.amount).toLocaleString()} {r.currency !== 'USD' ? r.currency : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Date</span>
+                              <span>{r.date ? new Date(r.date).toLocaleString() : '—'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Account</span>
+                              <span className="truncate max-w-[260px] text-right">{r.account}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Credit</span>
+                              <span>{r.isCredit ? 'Yes' : 'No'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Category</span>
+                              <span className="truncate max-w-[260px] text-right">{r.category}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Type</span>
+                              <span>{r.type}</span>
+                            </div>
+                            {r.description && (
+                              <div>
+                                <div className="text-muted-foreground mb-1">Description</div>
+                                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                                  {r.description}
+                                </div>
+                              </div>
+                            )}
+                            {/* Database fields */}
+                            <div className="mt-4 border-t pt-3">
+                              <div className="text-xs font-medium text-muted-foreground mb-2">Database Fields</div>
+                              <div className="grid gap-2 text-sm">
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">ID</span><span className="font-mono text-xs">{raw?.id || '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Amount</span><span>{raw?.amount ?? '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Currency</span><span>{raw?.currency || '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Merchant</span><span className="truncate max-w-[260px] text-right">{raw?.merchant || '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Category</span><span className="truncate max-w-[260px] text-right">{raw?.category || '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Payment Method</span><span className="truncate max-w-[260px] text-right">{raw?.payment_method || '—'}</span></div>
+                                {typeof (raw as any)?.account !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Account</span><span className="truncate max-w-[260px] text-right">{(raw as any).account || '—'}</span></div>
+                                )}
+                                {typeof raw?.entry_type !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Entry Type</span><span>{raw?.entry_type || '—'}</span></div>
+                                )}
+                                {typeof raw?.description !== 'undefined' && (
+                                  <div>
+                                    <div className="text-muted-foreground mb-1">Description</div>
+                                    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                                      {raw?.description || '—'}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Date</span><span>{raw?.date ? new Date(raw.date).toLocaleString() : '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Created At</span><span>{raw?.created_at ? new Date(raw.created_at).toLocaleString() : '—'}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-muted-foreground">User ID</span><span className="font-mono text-xs truncate max-w-[260px] text-right">{raw?.user_id || '—'}</span></div>
+                                {typeof (raw as any)?.edited !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited</span><span>{String((raw as any).edited)}</span></div>
+                                )}
+                                {typeof (raw as any)?.edited_at !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Edited At</span><span>{(raw as any).edited_at ? new Date((raw as any).edited_at as any).toLocaleString() : '—'}</span></div>
+                                )}
+                                {typeof (raw as any)?.updated_at !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Updated At</span><span>{(raw as any).updated_at ? new Date((raw as any).updated_at as any).toLocaleString() : '—'}</span></div>
+                                )}
+                                {/* Render any other unknown fields for completeness */}
+                                {(() => {
+                                  const known = new Set([
+                                    'id','amount','currency','merchant','category','payment_method','account','entry_type','description','date','created_at','user_id','edited','edited_at','updated_at'
+                                  ])
+                                  const entries = Object.entries((raw as any) || {}).filter(([k]) => !known.has(k))
+                                  if (!entries.length) return null
+                                  return entries.map(([k, v]) => (
+                                    <div key={k} className="flex items-center justify-between">
+                                      <span className="text-muted-foreground">{k}</span>
+                                      <span className="truncate max-w-[260px] text-right">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                                    </div>
+                                  ))
+                                })()}
+                                {/* Edit history (if available) */}
+                                {(() => {
+                                  const eh = (raw as any)?.edit_history ?? (raw as any)?.edits ?? (raw as any)?.history ?? (raw as any)?.editHistory
+                                  if (typeof eh === 'undefined') return null
+                                  return (
+                                    <div className="mt-2">
+                                      <div className="text-muted-foreground mb-1">Edit History</div>
+                                      {typeof eh === 'string' ? (
+                                        <pre className="max-h-[50vh] overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap break-words">{eh}</pre>
+                                      ) : (
+                                        <pre className="max-h-[50vh] overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(eh, null, 2)}</pre>
+                                      )}
+                                  </div>
+                                )
+                              })()}
+                              </div>
+                              {/* Raw JSON for full visibility */}
+                              <div className="mt-3">
+                                <div className="text-muted-foreground mb-1">Raw Record</div>
+                                <pre className="max-h-[50vh] overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(raw, null, 2)}</pre>
+                              </div>
+                            </div>
+                          </div>
+                          </SheetContent>
+                        </Sheet>
+                      </TableCell>
                     </TableRow>
                   )
                 })}

@@ -171,6 +171,12 @@ The dashboard follows exact shadcn/ui patterns:
   - Sorting: Primarily by transaction date (descending by day), with a tie‑breaker on `created_at` so the most recently added shows first for the same day.
   - Pagination: Shows 10 rows per page with shadcn‑style pagination controls (Previous, numbers, Next) centered below the table.
   - Alignment/stability: Fixed table layout with explicit column widths, `tabular-nums` for amounts, truncation for long text, and `scrollbar-gutter: stable` to prevent layout shift.
+  - Details Sheet: A rightmost Eye icon opens a shadcn Sheet per row with:
+    - Summary: amount (income green/expense red), local date/time, account, credit flag, category, type, full description.
+    - Database Fields: raw fields from Supabase including `id`, `amount`, `currency`, `merchant`, `category`, `payment_method`, `account` (if present), `entry_type` (if present), `description` (full, wrapped), `date`, `created_at`, `user_id`, `edited`, `edited_at`, `updated_at` when present.
+    - Edit History: renders `edit_history` (if present) as pretty JSON or raw text in a scrollable block.
+    - Raw Record: pretty‑printed JSON of the entire row for debugging.
+    - UX: Wider sheet on `sm+` (640px), vertical scroll enabled; content uses tight grid, no truncation for long text blocks.
 
 ### Sidebar Navigation
 - Added a new “Developing” group at the top with links to `Dashboard` (`/`) and `Transactions` (`/transactions`).
