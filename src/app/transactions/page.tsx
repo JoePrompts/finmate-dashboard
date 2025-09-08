@@ -101,7 +101,12 @@ export default function TransactionsPage() {
         }
       }
       const when = r.date || r.created_at
-      const ts = when ? Date.parse(when) : 0
+      const d = when ? new Date(when) : null
+      const ts = d ? d.getTime() : 0
+      // Start-of-day timestamp (local) for grouping by transaction date
+      const dayTs = d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : 0
+      // Creation timestamp for tie-breaking when multiple on same day
+      const createdTs = r.created_at ? Date.parse(r.created_at) : ts
       return {
         id: r.id,
         merchant: r.merchant || '—',
@@ -109,6 +114,8 @@ export default function TransactionsPage() {
         currency: (r.currency || 'USD').toUpperCase(),
         date: when,
         ts,
+        dayTs,
+        createdTs,
         account: r.payment_method || r.account || '—',
         isCredit,
         category: r.category || '—',
@@ -116,7 +123,10 @@ export default function TransactionsPage() {
         description: r.description || '',
       }
     })
-    items.sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    items.sort((a, b) => {
+      if ((b.dayTs || 0) !== (a.dayTs || 0)) return (b.dayTs || 0) - (a.dayTs || 0)
+      return (b.createdTs || 0) - (a.createdTs || 0)
+    })
     return items
   }, [rows, creditNames])
 

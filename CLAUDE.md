@@ -168,6 +168,9 @@ The dashboard follows exact shadcn/ui patterns:
 - Data table: Full transaction list with columns: Merchant, Amount (signed; expense red), Date, Account, Credit (Yes/No), Category, Type.
   - Currency column removed; amount shows symbol and, for USD, an inline “USD” tooltip that converts to COP with live FX (open.er-api.com) — same behavior as Dashboard.
   - Row spacing increased for readability; table header has a contrasting background (`bg-muted` with `overflow-hidden` container) to preserve rounded corners.
+  - Sorting: Primarily by transaction date (descending by day), with a tie‑breaker on `created_at` so the most recently added shows first for the same day.
+  - Pagination: Shows 10 rows per page with shadcn‑style pagination controls (Previous, numbers, Next) centered below the table.
+  - Alignment/stability: Fixed table layout with explicit column widths, `tabular-nums` for amounts, truncation for long text, and `scrollbar-gutter: stable` to prevent layout shift.
 
 ### Sidebar Navigation
 - Added a new “Developing” group at the top with links to `Dashboard` (`/`) and `Transactions` (`/transactions`).
