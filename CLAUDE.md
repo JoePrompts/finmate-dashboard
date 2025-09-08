@@ -179,7 +179,7 @@ The dashboard follows exact shadcn/ui patterns:
     - UX: Wider sheet on `sm+` (640px), vertical scroll enabled; content uses tight grid, no truncation for long text blocks.
   - Filters: Client‑side filters above the table
     - Account filter via Dropdown (lists unique accounts; shows active filter badge; resets pagination on change)
-    - Date range filter via shadcn Popover + Calendar (react‑day‑picker) showing two months with range selection; Clear/Done actions; selected range displays on the trigger and resets pagination on change
+    - Date range filter via shadcn Popover + single‑month Calendar (calendar‑04 style using react‑day‑picker) with range selection; Clear/Done actions; the trigger button mirrors the selected range and pagination resets on change; interaction matches the account filter button
   - Header: Sticky opaque navbar for the Transactions page (`sticky top-0 z-50 bg-background` with backdrop blur support) to prevent content showing through when scrolling
 
 ### Sidebar Navigation

@@ -16,9 +16,9 @@ import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
 import { Badge } from "@/components/ui/badge"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
 import type { DateRange } from "react-day-picker"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Pagination,
   PaginationContent,
@@ -53,16 +53,9 @@ export default function TransactionsPage() {
   const [accountFilter, setAccountFilter] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState<string | null>(null)
   const [dateTo, setDateTo] = useState<string | null>(null)
-  const [dateOpen, setDateOpen] = useState(false)
   const [range, setRange] = useState<DateRange | undefined>(undefined)
+  const [dateOpen, setDateOpen] = useState(false)
 
-  function fmt(d: Date | undefined | null) {
-    if (!d) return null
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const dd = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${dd}`
-  }
   // Credit card names set from accounts
   const [creditNames, setCreditNames] = useState<Set<string>>(new Set())
 
@@ -315,7 +308,7 @@ export default function TransactionsPage() {
           <>
           {/* Filters */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-sm text-muted-foreground">Filters</div>
+            <div className="text-sm font-medium">Filters</div>
             <div className="flex items-center gap-2 flex-wrap">
               {accountFilter ? (
                 <Badge variant="secondary" className="max-w-[240px] truncate" title={accountFilter}>
@@ -348,6 +341,7 @@ export default function TransactionsPage() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              {/* Date range popover with single-month calendar */}
               <Popover open={dateOpen} onOpenChange={setDateOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -358,20 +352,27 @@ export default function TransactionsPage() {
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-auto p-0">
-                  <div className="p-3">
+                <PopoverContent align="end" className="w-auto p-3">
+                  <div className="space-y-2">
                     <Calendar
                       mode="range"
-                      numberOfMonths={2}
+                      numberOfMonths={1}
                       selected={range}
                       onSelect={(v) => {
                         setRange(v)
-                        setDateFrom(fmt(v?.from ?? null))
-                        setDateTo(fmt(v?.to ?? null))
+                        const from = v?.from ?? undefined
+                        const to = v?.to ?? undefined
+                        const fmt = (d?: Date) => {
+                          if (!d) return null
+                          const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0')
+                          return `${y}-${m}-${dd}`
+                        }
+                        setDateFrom(fmt(from))
+                        setDateTo(fmt(to))
                       }}
                       initialFocus
                     />
-                    <div className="flex items-center justify-end gap-2 p-2 pt-0">
+                    <div className="flex items-center justify-end gap-2">
                       {(dateFrom || dateTo) && (
                         <Button variant="outline" size="sm" onClick={() => { setRange(undefined); setDateFrom(null); setDateTo(null) }}>
                           Clear
