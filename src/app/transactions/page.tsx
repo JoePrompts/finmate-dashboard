@@ -16,8 +16,7 @@ import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
 import { Badge } from "@/components/ui/badge"
-import type { DateRange } from "react-day-picker"
-import { Calendar } from "@/components/ui/calendar"
+import { Calendar, type DateRange } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Pagination,
