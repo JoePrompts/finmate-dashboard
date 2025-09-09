@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useEffect, useState } from "react"
 import {
   AudioWaveform,
   BookOpen,
@@ -33,14 +34,10 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar"
+import { supabase } from "@/lib/supabase"
 
-// This is sample data.
+// This is sample data (navigation only)
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   teams: [
     {
       name: "Acme Inc",
@@ -165,6 +162,31 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [user, setUser] = useState<{ name: string; email: string; avatar: string } | null>(null)
+
+  useEffect(() => {
+    const mapUser = (u: any): { name: string; email: string; avatar: string } => {
+      const email: string = u?.email || u?.user_metadata?.email || ""
+      const name: string =
+        u?.user_metadata?.full_name ||
+        u?.user_metadata?.name ||
+        (email ? email.split("@")[0] : "User")
+      const avatar: string = u?.user_metadata?.avatar_url || u?.user_metadata?.picture || ""
+      return { name, email: email || "", avatar }
+    }
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) setUser(mapUser(data.user))
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) setUser(mapUser(session.user))
+      else setUser(null)
+    })
+    return () => {
+      try { sub?.subscription?.unsubscribe() } catch {}
+    }
+  }, [])
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -197,7 +219,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={{
+          name: user?.name || "User",
+          email: user?.email || "",
+          avatar: user?.avatar || "",
+        }} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

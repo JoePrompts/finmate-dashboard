@@ -68,17 +68,28 @@ export default function TransactionsPage() {
         return
       }
       try {
+        // Ensure user is logged in; scope queries to their user_id
+        const { data: userData, error: userErr } = await supabase.auth.getUser()
+        if (userErr || !userData?.user) {
+          throw new Error('Not authenticated')
+        }
+        const userId = userData.user.id
+
         // Transactions
         const { data: tx, error: txErr } = await supabase
-          .from('expenses')
+          .from('transactions')
           .select('*')
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
         if (txErr) throw txErr
         setRows((tx || []) as ExpenseRow[])
 
         // Accounts for credit detection
         try {
-          const { data: accts, error: aerr } = await supabase.from('accounts').select('*')
+          const { data: accts, error: aerr } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('user_id', userId)
           if (!aerr && accts) {
             type AccountLite = { name?: string | null; type?: string | null; account_type?: string | null; is_credit_card?: boolean | null }
             const set = new Set<string>()

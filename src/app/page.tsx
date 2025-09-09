@@ -167,9 +167,14 @@ export default function Dashboard() {
         return
       }
       try {
+        const { data: uData, error: uErr } = await supabase.auth.getUser()
+        if (uErr || !uData?.user) throw new Error('Not authenticated')
+        const userId = uData.user.id
+
         const { data, error } = await supabase
-          .from('expenses')
+          .from('transactions')
           .select('*')
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(5)
 
@@ -208,9 +213,14 @@ export default function Dashboard() {
 
       // Monthly Expenses (entry_type = 'expense')
       try {
+        const { data: uData, error: uErr } = await supabase.auth.getUser()
+        if (uErr || !uData?.user) throw new Error('Not authenticated')
+        const userId = uData.user.id
+
         const { data, error } = await supabase
-          .from('expenses')
+          .from('transactions')
           .select('amount, created_at, entry_type')
+          .eq('user_id', userId)
           .gte('created_at', start.toISOString())
           .lte('created_at', end.toISOString())
           .in('entry_type', ['expense', 'EXPENSE'])
@@ -224,9 +234,13 @@ export default function Dashboard() {
 
       // Monthly Income (entry_type = 'income')
       try {
+        const { data: uData2, error: uErr2 } = await supabase.auth.getUser()
+        if (uErr2 || !uData2?.user) throw new Error('Not authenticated')
+        const userId2 = uData2.user.id
         const { data, error } = await supabase
-          .from('expenses')
+          .from('transactions')
           .select('amount, created_at, entry_type')
+          .eq('user_id', userId2)
           .gte('created_at', start.toISOString())
           .lte('created_at', end.toISOString())
           .in('entry_type', ['income', 'INCOME'])
@@ -291,9 +305,13 @@ export default function Dashboard() {
 
       // Net Worth (sum of accounts.starting_balance as a baseline) and Accounts lists
       try {
+        const { data: uData3, error: uErr3 } = await supabase.auth.getUser()
+        if (uErr3 || !uData3?.user) throw new Error('Not authenticated')
+        const userId3 = uData3.user.id
         const { data, error } = await supabase
           .from('accounts')
           .select('*')
+          .eq('user_id', userId3)
         if (error) throw error
         const rows = (data || []) as unknown as AccountRow[]
         const sum = rows.reduce((s, r) => s + Number((r.starting_balance ?? r.balance) ?? 0), 0)
@@ -358,9 +376,12 @@ export default function Dashboard() {
         // Compute credit card balances strictly from transactions converted to COP
         try {
           type TxRow = { payment_method: string | null; amount: number | string | null; entry_type?: string | null; currency?: string | null }
+          const { data: uData4 } = await supabase.auth.getUser()
+          const userId4 = uData4?.user?.id
           const { data: txs, error: txErr } = await supabase
-            .from('expenses')
+            .from('transactions')
             .select('payment_method, amount, entry_type, currency')
+            .eq('user_id', userId4 as string)
           if (txErr) throw txErr
           const normalizedSumByPmCOP = new Map<string, number>()
           const sumByPmByCurrency = new Map<string, Map<string, number>>()
