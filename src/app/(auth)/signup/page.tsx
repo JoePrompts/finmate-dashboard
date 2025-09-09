@@ -53,7 +53,7 @@ export default function SignupPage() {
     }
     // If email confirmations are enabled, session may be null until confirmed.
     if (data?.session) {
-      router.replace("/dashboard");
+      router.replace("/");
     } else {
       setInfo("We sent you a confirmation email. Please verify to continue.");
     }
@@ -68,7 +68,7 @@ export default function SignupPage() {
       options: {
         redirectTo:
           typeof window !== "undefined"
-            ? `${window.location.origin}/dashboard`
+            ? `${window.location.origin}/`
             : undefined,
       },
     });

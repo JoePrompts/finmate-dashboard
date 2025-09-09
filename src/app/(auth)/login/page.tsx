@@ -37,7 +37,7 @@ export default function LoginPage() {
       setError(error.message || "Unable to sign in");
       return;
     }
-    router.replace("/dashboard");
+    router.replace("/");
   }
 
   async function signInWithGoogle() {
@@ -46,7 +46,7 @@ export default function LoginPage() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
+        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/` : undefined,
       },
     });
     if (error) {
