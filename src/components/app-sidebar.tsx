@@ -35,6 +35,7 @@ import {
   SidebarMenuButton,
 } from "@/components/ui/sidebar"
 import { supabase } from "@/lib/supabase"
+import type { User } from "@supabase/supabase-js"
 
 // This is sample data (navigation only)
 const data = {
@@ -165,7 +166,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [user, setUser] = useState<{ name: string; email: string; avatar: string } | null>(null)
 
   useEffect(() => {
-    const mapUser = (u: any): { name: string; email: string; avatar: string } => {
+    const mapUser = (u: User): { name: string; email: string; avatar: string } => {
       const email: string = u?.email || u?.user_metadata?.email || ""
       const name: string =
         u?.user_metadata?.full_name ||
