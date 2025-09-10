@@ -203,6 +203,9 @@ Create `.env.local` for local development (not committed):
 ```
 NEXT_PUBLIC_SUPABASE_URL=<your-supabase-project-url>
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+# Optional: Explicit site URL used for OAuth redirects (recommended for prod)
+NEXT_PUBLIC_SITE_URL=https://your-production-domain.com/
+
 # Optional server-side only
 SUPABASE_URL=<your-supabase-project-url>
 SUPABASE_ANON_KEY=<your-supabase-anon-key>
@@ -210,3 +213,12 @@ SUPABASE_DB_PASSWORD=<your-db-password>
 ```
 
 `.gitignore` excludes `.env*` by default.
+
+### Supabase Auth URL configuration (important)
+
+In the Supabase Dashboard, go to Authentication → URL Configuration and set:
+
+- Site URL: your production domain (e.g., `https://your-production-domain.com`).
+- Additional Redirect URLs: include your production domain, your local dev URL `http://localhost:3000`, and any preview domains if needed.
+
+If these aren’t set, Google sign‑in may redirect to `localhost` in production.

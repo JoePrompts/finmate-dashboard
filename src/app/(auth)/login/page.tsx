@@ -43,10 +43,13 @@ export default function LoginPage() {
   async function signInWithGoogle() {
     setError(null);
     setPending(true);
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/` : undefined,
+        // Prefer explicit site URL when provided; fall back to current origin in browser
+        redirectTo:
+          siteUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/` : undefined),
       },
     });
     if (error) {

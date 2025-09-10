@@ -63,13 +63,12 @@ export default function SignupPage() {
     setError(null);
     setInfo(null);
     setPending(true);
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo:
-          typeof window !== "undefined"
-            ? `${window.location.origin}/`
-            : undefined,
+          siteUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/` : undefined),
       },
     });
     if (error) {
