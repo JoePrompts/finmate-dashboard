@@ -42,6 +42,14 @@ function makeUrlSafeToken(len: number) {
   return out
 }
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  if (typeof err === 'object' && err !== null) {
+    try { return JSON.stringify(err) } catch {}
+  }
+  return String(err ?? 'Error')
+}
+
 export default function AccountSettingsPage() {
   const router = useRouter()
   const { setTheme } = useTheme()
@@ -105,8 +113,8 @@ export default function AccountSettingsPage() {
           .maybeSingle()
         if (pErr) throw pErr
         setProfile(prof || null)
-      } catch (e: any) {
-        setErrorMsg(e?.message || 'No se pudo cargar el estado de Telegram')
+      } catch (e: unknown) {
+        setErrorMsg(getErrorMessage(e) || 'No se pudo cargar el estado de Telegram')
       } finally {
         setLoading(false)
       }
@@ -159,8 +167,8 @@ export default function AccountSettingsPage() {
           // optional telemetry could go here
         }
       }, 4000)
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'No se pudo generar el token de enlace')
+    } catch (e: unknown) {
+      setErrorMsg(getErrorMessage(e) || 'No se pudo generar el token de enlace')
     } finally {
       setBusy(false)
     }
@@ -176,8 +184,8 @@ export default function AccountSettingsPage() {
       if (error) throw error
       setProfile(null)
       setTokenData(null)
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'No se pudo desvincular Telegram')
+    } catch (e: unknown) {
+      setErrorMsg(getErrorMessage(e) || 'No se pudo desvincular Telegram')
     } finally {
       setBusy(false)
     }
