@@ -3,6 +3,16 @@
 ## Project Overview
 FinMate dashboard is a Next.js web app with shadcn/ui components that displays AI-powered expense tracking insights from a Telegram bot connected to Supabase.
 
+## Deployment Checklist (PM-friendly)
+- Set Supabase → Authentication → URL Configuration:
+  - Site URL: your live site (e.g., https://your-domain.com)
+  - Additional Redirect URLs: add your live site, http://localhost:3000, and any preview domains
+- In Vercel (or hosting env), set env vars:
+  - NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+  - NEXT_PUBLIC_SITE_URL=https://your-domain.com/
+- Redeploy the site
+- Test login with Google and with email/password
+
 ## Tech Stack
 - **Framework**: Next.js 15.5.2 with React 19.1.0
 - **Styling**: Tailwind CSS with shadcn/ui components
