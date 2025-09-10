@@ -29,6 +29,18 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Telegram Linking
+
+To enable the Settings → Account → "Conectar Telegram" flow, set the bot username in your environment:
+
+```
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=<your_bot_without_at>
+```
+
+Users can generate a 10‑minute link token that opens `https://t.me/<BOT>?start=<TOKEN>` and the UI will detect completion once the bot links their account (via the `profiles` table).
+
+Requires existing Supabase env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
