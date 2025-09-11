@@ -60,13 +60,19 @@ export default function AccountSettingsPage() {
   const [busy, setBusy] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const botUser = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || ""
+  const rawBot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || ""
+  const botUser = (rawBot || "").replace(/^@+/, "")
 
   const isLinked = !!profile
 
-  const deepLink = useMemo(() => {
+  const tgLink = useMemo(() => {
     if (!tokenData || !botUser) return null
-    return `https://t.me/${botUser}?start=${tokenData.token}`
+    return `tg://resolve?domain=${botUser}&start=${encodeURIComponent(tokenData.token)}`
+  }, [tokenData, botUser])
+
+  const webLink = useMemo(() => {
+    if (!tokenData || !botUser) return null
+    return `https://t.me/${botUser}?start=${encodeURIComponent(tokenData.token)}`
   }, [tokenData, botUser])
 
   const msRemaining = useMemo(() => {
@@ -101,11 +107,11 @@ export default function AccountSettingsPage() {
       setLoading(true)
       try {
         if (!SUPABASE_CONFIGURED) {
-          setErrorMsg('Supabase no está configurado. Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.')
+          setErrorMsg('Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.')
           return
         }
         const { data: { user }, error } = await supabase.auth.getUser()
-        if (error || !user) throw new Error('No autenticado')
+        if (error || !user) throw new Error('Not authenticated')
         const { data: prof, error: pErr } = await supabase
           .from('profiles')
           .select('user_id, telegram_user_id, telegram_chat_id, telegram_username, linked_at')
@@ -114,7 +120,7 @@ export default function AccountSettingsPage() {
         if (pErr) throw pErr
         setProfile(prof || null)
       } catch (e: unknown) {
-        setErrorMsg(getErrorMessage(e) || 'No se pudo cargar el estado de Telegram')
+        setErrorMsg(getErrorMessage(e) || 'Could not load Telegram status')
       } finally {
         setLoading(false)
       }
@@ -128,7 +134,7 @@ export default function AccountSettingsPage() {
     setErrorMsg(null)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No autenticado')
+      if (!user) throw new Error('Not authenticated')
       const nowIso = new Date().toISOString()
       // Revoke any unexpired tokens (optionally only unused)
       await supabase.from('link_tokens')
@@ -168,7 +174,7 @@ export default function AccountSettingsPage() {
         }
       }, 4000)
     } catch (e: unknown) {
-      setErrorMsg(getErrorMessage(e) || 'No se pudo generar el token de enlace')
+      setErrorMsg(getErrorMessage(e) || 'Could not generate link token')
     } finally {
       setBusy(false)
     }
@@ -179,13 +185,13 @@ export default function AccountSettingsPage() {
     setErrorMsg(null)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No autenticado')
+      if (!user) throw new Error('Not authenticated')
       const { error } = await supabase.from('profiles').delete().eq('user_id', user.id)
       if (error) throw error
       setProfile(null)
       setTokenData(null)
     } catch (e: unknown) {
-      setErrorMsg(getErrorMessage(e) || 'No se pudo desvincular Telegram')
+      setErrorMsg(getErrorMessage(e) || 'Could not unlink Telegram')
     } finally {
       setBusy(false)
     }
@@ -205,16 +211,16 @@ export default function AccountSettingsPage() {
               variant="outline"
               size="sm"
               onClick={() => router.refresh()}
-              title="Refrescar"
+              title="Refresh"
             >
               <RefreshCw className="h-4 w-4" />
-              <span className="sr-only">Refrescar</span>
+              <span className="sr-only">Refresh</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Settings className="h-4 w-4" />
-                  <span className="sr-only">Cambiar tema</span>
+                  <span className="sr-only">Toggle theme</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -247,65 +253,83 @@ export default function AccountSettingsPage() {
         <section className="grid gap-6 max-w-3xl">
           <Card>
             <CardHeader>
-              <CardTitle>Conectar Telegram</CardTitle>
+              <CardTitle>Connect Telegram</CardTitle>
               <CardDescription>
-                Vincula tu Telegram para registrar gastos y ver presupuestos desde el chat.
+                Link your Telegram to log expenses and manage budgets via chat.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {loading ? (
-                <div className="text-sm text-muted-foreground">Cargando…</div>
+                <div className="text-sm text-muted-foreground">Loading…</div>
               ) : isLinked ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">Vinculado</Badge>
+                    <Badge variant="secondary">Linked</Badge>
                     <div className="text-sm">
                       {profile?.telegram_username ? (
-                        <>Vinculado a @{profile.telegram_username}</>
+                        <>Linked to @{profile.telegram_username}</>
                       ) : (
-                        <>Vinculado</>
+                        <>Linked</>
                       )}
                     </div>
                   </div>
                   {profile?.linked_at && (
                     <div className="text-xs text-muted-foreground">
-                      Última vinculación: {new Date(profile.linked_at).toLocaleString()}
+                      Last linked: {new Date(profile.linked_at).toLocaleString()}
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">Puedes volver a vincular cuando quieras.</p>
+                  <p className="text-xs text-muted-foreground">You can relink at any time.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {!tokenData && (
                     <Button onClick={generateToken} disabled={busy || !SUPABASE_CONFIGURED}>
                       <LinkIcon className="h-4 w-4 mr-2" />
-                      Conectar Telegram
+                      Connect Telegram
                     </Button>
                   )}
 
                   {tokenData && (
                     <div className="space-y-3">
                       <ol className="list-decimal pl-5 space-y-1 text-sm">
-                        <li> Toca “Abrir Telegram” abajo. </li>
-                        <li> En Telegram, toca Start para finalizar el enlace. </li>
+                        <li> Step 1: Tap “Open in Telegram” below. </li>
+                        <li> Step 2: In Telegram, tap Start to finish linking. </li>
                       </ol>
 
-                      <div className="flex items-center gap-2">
-                        <Button asChild disabled={expired || busy || !botUser}>
-                          <a href={deepLink ?? '#'} target="_blank" rel="noreferrer">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Abrir Telegram
+                      {botUser ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <Button asChild disabled={expired || busy}>
+                            <a href={tgLink ?? '#'} target="_blank" rel="noreferrer">
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Open in Telegram
+                            </a>
+                          </Button>
+                          <a
+                            className={cn("text-sm underline underline-offset-2", expired ? "pointer-events-none opacity-50" : "")}
+                            href={webLink ?? '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open in Telegram Web
                           </a>
-                        </Button>
-                        <div className={cn("text-sm", expired ? "text-red-600" : "text-muted-foreground")}
-                          title={tokenData.expires_at}
-                        >
-                          {expired ? "El enlace venció. Genera uno nuevo." : `Vence en ${mmss(msRemaining)}`}
+                          <div
+                            className={cn("text-sm", expired ? "text-red-600" : "text-muted-foreground")}
+                            title={tokenData.expires_at}
+                          >
+                            {expired ? "Link expired. Generate a new one." : `Expires in ${mmss(msRemaining)}`}
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <Alert>
+                          <AlertTitle>Telegram Bot Not Configured</AlertTitle>
+                          <AlertDescription>
+                            Set NEXT_PUBLIC_TELEGRAM_BOT_USERNAME (without @) in your environment.
+                          </AlertDescription>
+                        </Alert>
+                      )}
 
                       <div className="text-sm">
-                        <span className="text-muted-foreground">O envía este mensaje al bot: </span>
+                        <span className="text-muted-foreground">Or send this message to the bot: </span>
                         <code className="rounded bg-muted px-2 py-1">/start {tokenData.token}</code>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -314,20 +338,20 @@ export default function AccountSettingsPage() {
                               size="icon"
                               className="h-7 w-7 ml-1"
                               onClick={() => navigator.clipboard?.writeText(`/start ${tokenData.token}`)}
-                              title="Copiar"
+                              title="Copy"
                             >
                               <Copy className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Copiar</TooltipContent>
+                          <TooltipContent>Copy</TooltipContent>
                         </Tooltip>
                       </div>
 
-                      <div className="text-xs text-muted-foreground">Este enlace vence en 10 minutos.</div>
+                      <div className="text-xs text-muted-foreground">This link expires in 10 minutes.</div>
 
                       <div className="pt-2">
                         <Button variant="secondary" onClick={generateToken} disabled={busy}>
-                          Generar nuevo enlace
+                          Generate new link
                         </Button>
                       </div>
                     </div>
@@ -337,12 +361,12 @@ export default function AccountSettingsPage() {
             </CardContent>
             <CardFooter className="justify-between">
               <div className="text-xs text-muted-foreground">
-                Bot: {botUser ? `@${botUser}` : 'No configurado'}
+                Bot: {botUser ? `@${botUser}` : 'Not configured'}
               </div>
               {isLinked && (
                 <Button variant="outline" onClick={unlinkTelegram} disabled={busy}>
                   <Link2Off className="h-4 w-4 mr-2" />
-                  Desvincular
+                  Unlink
                 </Button>
               )}
             </CardFooter>

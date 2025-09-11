@@ -31,13 +31,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Telegram Linking
 
-To enable the Settings → Account → "Conectar Telegram" flow, set the bot username in your environment:
+To enable the Settings → Account → "Connect Telegram" flow, set the bot username in your environment (no `@`):
 
 ```
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=<your_bot_without_at>
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=finmate_bot
 ```
 
-Users can generate a 10‑minute link token that opens `https://t.me/<BOT>?start=<TOKEN>` and the UI will detect completion once the bot links their account (via the `profiles` table).
+Users can generate a 10‑minute link token. The UI provides:
+- App link: `tg://resolve?domain=<BOT>&start=<TOKEN>` (preferred)
+- Web link: `https://t.me/<BOT>?start=<TOKEN>` (fallback)
+The UI will detect completion once the bot links their account (via the `profiles` table).
 
 Requires existing Supabase env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 
