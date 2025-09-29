@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Progress } from "@/components/ui/progress"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import Link from "next/link"
 import { useEffect, useState } from "react"
@@ -38,6 +39,7 @@ import {
   Landmark,
   Tag,
   CreditCard,
+  CalendarDays,
 } from "lucide-react"
 
 export default function Dashboard() {
@@ -64,6 +66,24 @@ export default function Dashboard() {
   type AccountDisplay = { id: string | number; name: string; amount: number; currency?: string }
   const [accounts, setAccounts] = useState<AccountDisplay[]>([])
   const [creditCards, setCreditCards] = useState<AccountDisplay[]>([])
+  const [userId, setUserId] = useState<string | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  type BudgetDisplay = { id: string | number; name: string; amount: number; progressPct: number; paid: number; due?: string | null }
+  const [budgetItems, setBudgetItems] = useState<BudgetDisplay[]>([])
+  type GoalDisplay = {
+    id: string
+    name: string
+    description?: string | null
+    goalType: string
+    targetAmount: number
+    targetCurrency: string
+    deadline?: string | null
+    progressPct: number
+    contributed: number
+    status: string
+  }
+  const [goals, setGoals] = useState<GoalDisplay[]>([])
+  const [goalsLoading, setGoalsLoading] = useState(true)
 
   // Global USD->COP FX for aggregations (shared with tooltip cache)
   const { data: usdCopRate } = useQuery({
@@ -81,6 +101,15 @@ export default function Dashboard() {
     retry: 1,
   })
 
+  // Load auth session once and cache userId for all queries
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) { setAuthReady(true); return }
+    supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user?.id || null)
+      setAuthReady(true)
+    }).catch(() => setAuthReady(true))
+  }, [])
+
   function getCategoryIcon(category: string) {
     if (category.includes('grocery') || category.includes('supermarket')) return ShoppingCart
     if (category.includes('food') || category.includes('dining') || category.includes('restaurant') || category.includes('coffee')) return Utensils
@@ -93,6 +122,11 @@ export default function Dashboard() {
     if (category.includes('salary') || category.includes('payroll') || category.includes('income')) return Landmark
     if (category.includes('shopping') || category.includes('retail')) return ShoppingCart
     return Tag
+  }
+
+  function getGoalIcon(goalType: string) {
+    const normalized = (goalType || '').toLowerCase()
+    return normalized === 'debt' ? CreditCard : PiggyBank
   }
 
   function UsdToCop({ amount }: { amount: number }) {
@@ -166,10 +200,9 @@ export default function Dashboard() {
         setLoading(false)
         return
       }
+      if (!authReady) return
       try {
-        const { data: uData, error: uErr } = await supabase.auth.getUser()
-        if (uErr || !uData?.user) throw new Error('Not authenticated')
-        const userId = uData.user.id
+        if (!userId) throw new Error('Not authenticated')
 
         const { data, error } = await supabase
           .from('transactions')
@@ -191,11 +224,12 @@ export default function Dashboard() {
     }
 
     fetchExpenses()
-  }, [])
+  }, [authReady, userId])
 
   useEffect(() => {
     async function fetchMetrics() {
       if (!SUPABASE_CONFIGURED) return
+      if (!authReady || !userId) return
 
       // Current month range (UTC)
       const start = new Date()
@@ -211,54 +245,46 @@ export default function Dashboard() {
       // removed unused AccountLite type per lint
       type BudgetRecord = Record<string, unknown>
 
-      // Monthly Expenses (entry_type = 'expense')
+      // Monthly Expenses and Income in parallel
       try {
-        const { data: uData, error: uErr } = await supabase.auth.getUser()
-        if (uErr || !uData?.user) throw new Error('Not authenticated')
-        const userId = uData.user.id
-
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('amount, created_at, entry_type')
-          .eq('user_id', userId)
-          .gte('created_at', start.toISOString())
-          .lte('created_at', end.toISOString())
-          .in('entry_type', ['expense', 'EXPENSE'])
-        if (error) throw error
-        const rows = (data || []) as ExpenseLite[]
-        const sum = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0)
-        setMonthlyExpenses(sum)
+        const [expRes, incRes] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('amount, created_at, entry_type')
+            .eq('user_id', userId)
+            .gte('created_at', start.toISOString())
+            .lte('created_at', end.toISOString())
+            .in('entry_type', ['expense', 'EXPENSE']),
+          supabase
+            .from('transactions')
+            .select('amount, created_at, entry_type')
+            .eq('user_id', userId)
+            .gte('created_at', start.toISOString())
+            .lte('created_at', end.toISOString())
+            .in('entry_type', ['income', 'INCOME'])
+        ])
+        if (expRes.error) throw expRes.error
+        if (incRes.error) throw incRes.error
+        const rowsExp = (expRes.data || []) as ExpenseLite[]
+        const rowsInc = (incRes.data || []) as ExpenseLite[]
+        setMonthlyExpenses(rowsExp.reduce((s, r) => s + Number(r.amount ?? 0), 0))
+        setMonthlyIncome(rowsInc.reduce((s, r) => s + Number(r.amount ?? 0), 0))
       } catch (e) {
-        console.warn('Monthly expenses fetch failed:', e)
-      }
-
-      // Monthly Income (entry_type = 'income')
-      try {
-        const { data: uData2, error: uErr2 } = await supabase.auth.getUser()
-        if (uErr2 || !uData2?.user) throw new Error('Not authenticated')
-        const userId2 = uData2.user.id
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('amount, created_at, entry_type')
-          .eq('user_id', userId2)
-          .gte('created_at', start.toISOString())
-          .lte('created_at', end.toISOString())
-          .in('entry_type', ['income', 'INCOME'])
-        if (error) throw error
-        const rows = (data || []) as ExpenseLite[]
-        const sum = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0)
-        setMonthlyIncome(sum)
-      } catch (e) {
-        console.warn('Monthly income fetch failed:', e)
+        console.warn('Monthly expenses/income fetch failed:', e)
       }
 
       // Expected Budget Expenses (from budget tables if populated)
       // Defaults to 0 if tables are empty or inaccessible
       try {
-        // Attempt from budget_items first
+        // Attempt from budget_items first (scoped to current user)
+        const { data: uDataB, error: uErrB } = await supabase.auth.getUser()
+        if (uErrB || !uDataB?.user) throw new Error('Not authenticated')
+        const userIdB = uDataB.user.id
+
         const { data: bi, error: biErr } = await supabase
           .from('budget_items')
           .select('*')
+          .eq('user_id', userIdB)
           .limit(100)
         if (!biErr && bi && bi.length > 0) {
           // Try common numeric fields in priority order
@@ -275,6 +301,98 @@ export default function Dashboard() {
               return s + (Number.isFinite(Number(n)) ? Number(n) : 0)
             }, 0)
             setExpectedBudget(sum)
+          }
+
+          // Build display list for Monthly Budget card
+          const nameKeys = ['name', 'title', 'category', 'label'] as const
+          // Aggregate by category: sum planned amounts and collect earliest due date per category
+          const catKeys = ['category','group','type','label'] as const
+          const dueKeys = ['due_date','due','deadline','dueDate','due_at'] as const
+          const idToCat = new Map<string, string>()
+          const plannedByCat = new Map<string, number>()
+          const dueByCat = new Map<string, string>()
+          ;(bi as BudgetRecord[]).forEach((r, i) => {
+            const amountKey = key || (['planned_amount','amount','expected_amount'].find(k => typeof r[k as string] === 'number' || typeof r[k as string] === 'string'))
+            const rawAmount = amountKey ? r[amountKey as string] : 0
+            const amount = typeof rawAmount === 'number' ? rawAmount : typeof rawAmount === 'string' ? parseFloat(rawAmount) : 0
+            const rawId = r['id'] as unknown
+            const idStr = rawId == null ? null : String(rawId)
+            const catKey = catKeys.find(k => typeof r[k as string] === 'string') as (typeof catKeys)[number] | undefined
+            const rawCat = catKey ? (r[catKey as string] as string) : ''
+            const cat = (rawCat || 'Uncategorized').toString()
+            if (idStr) idToCat.set(idStr, cat)
+            plannedByCat.set(cat, (plannedByCat.get(cat) || 0) + (Number.isFinite(amount) ? Number(amount) : 0))
+            const dueKey = dueKeys.find(k => typeof r[k as string] === 'string') as (typeof dueKeys)[number] | undefined
+            const due = dueKey ? (r[dueKey as string] as string) : null
+            if (due) {
+              const prev = dueByCat.get(cat)
+              if (!prev || (Date.parse(due) || Infinity) < (Date.parse(prev) || Infinity)) {
+                dueByCat.set(cat, due)
+              }
+            }
+          })
+          // Compute per-item paid sums from budget_payments (this month)
+          try {
+            const { data: pays, error: payErr } = await supabase
+              .from('budget_payments')
+              .select('budget_item_id, amount, date, user_id')
+              .eq('user_id', userIdB)
+              .limit(1000)
+            if (payErr) throw payErr
+
+            const start = new Date()
+            start.setUTCDate(1)
+            start.setUTCHours(0, 0, 0, 0)
+            const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999))
+
+            const amtKeys = ['amount'] as const
+            const sumByItem = new Map<string, number>()
+            for (const row of (pays || []) as Record<string, unknown>[]) {
+              // Month filter using `date` column when present
+              const recDate = row['date']
+              if (typeof recDate === 'string') {
+                const ts = Date.parse(recDate)
+                if (!Number.isFinite(ts) || ts < start.getTime() || ts > end.getTime()) continue
+              }
+              const v = row['budget_item_id'] as unknown
+              const itemRef = v == null ? null : String(v)
+              if (!itemRef) continue
+              let paid = 0
+              for (const k of amtKeys) {
+                const v = row[k as string]
+                if (typeof v === 'number') { paid = v; break }
+                if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) { paid = Number(v); break }
+              }
+              sumByItem.set(itemRef, (sumByItem.get(itemRef) || 0) + (Number.isFinite(paid) ? paid : 0))
+            }
+
+            // Sum payments by category using item->category mapping
+            const paidByCat = new Map<string, number>()
+            for (const [itemId, cat] of idToCat.entries()) {
+              const paid = sumByItem.get(itemId) || 0
+              if (!paid) continue
+              paidByCat.set(cat, (paidByCat.get(cat) || 0) + paid)
+            }
+
+            const withProgress: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => {
+              const paid = paidByCat.get(cat) || 0
+              const progressPct = amt > 0 ? (paid / amt) * 100 : 0
+              const due = dueByCat.get(cat) ?? null
+              return { id: cat, name: cat, amount: amt, progressPct, paid, due }
+            })
+            // Sort: by progress desc, then by amount desc
+            withProgress.sort((a, b) => {
+              const p = (b.progressPct || 0) - (a.progressPct || 0)
+              if (p !== 0) return p
+              return (b.amount || 0) - (a.amount || 0)
+            })
+            setBudgetItems(withProgress)
+          } catch (e) {
+            // If payments fetch fails, still show items without progress
+            const cats: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => ({ id: cat, name: cat, amount: amt, progressPct: 0, paid: 0, due: dueByCat.get(cat) ?? null }))
+            // Sort by amount desc as fallback
+            cats.sort((a, b) => (b.amount || 0) - (a.amount || 0))
+            setBudgetItems(cats)
           }
         } else {
           // Fallback to budgets
@@ -298,6 +416,7 @@ export default function Dashboard() {
               setExpectedBudget(sum)
             }
           }
+          // If no budget_items, leave Monthly Budget card empty for now
         }
       } catch (e) {
         console.warn('Budget fetch failed:', e)
@@ -305,13 +424,10 @@ export default function Dashboard() {
 
       // Net Worth (sum of accounts.starting_balance as a baseline) and Accounts lists
       try {
-        const { data: uData3, error: uErr3 } = await supabase.auth.getUser()
-        if (uErr3 || !uData3?.user) throw new Error('Not authenticated')
-        const userId3 = uData3.user.id
         const { data, error } = await supabase
           .from('accounts')
           .select('*')
-          .eq('user_id', userId3)
+          .eq('user_id', userId)
         if (error) throw error
         const rows = (data || []) as unknown as AccountRow[]
         const sum = rows.reduce((s, r) => s + Number((r.starting_balance ?? r.balance) ?? 0), 0)
@@ -376,12 +492,10 @@ export default function Dashboard() {
         // Compute credit card balances strictly from transactions converted to COP
         try {
           type TxRow = { payment_method: string | null; amount: number | string | null; entry_type?: string | null; currency?: string | null }
-          const { data: uData4 } = await supabase.auth.getUser()
-          const userId4 = uData4?.user?.id
           const { data: txs, error: txErr } = await supabase
             .from('transactions')
             .select('payment_method, amount, entry_type, currency')
-            .eq('user_id', userId4 as string)
+            .eq('user_id', userId)
           if (txErr) throw txErr
           const normalizedSumByPmCOP = new Map<string, number>()
           const sumByPmByCurrency = new Map<string, Map<string, number>>()
@@ -445,7 +559,98 @@ export default function Dashboard() {
     }
 
     fetchMetrics()
-  }, [usdCopRate])
+  }, [authReady, userId, usdCopRate])
+
+  useEffect(() => {
+    async function fetchGoals() {
+      if (!SUPABASE_CONFIGURED) {
+        setGoals([])
+        setGoalsLoading(false)
+        return
+      }
+      if (!authReady) return
+      if (!userId) {
+        setGoals([])
+        setGoalsLoading(false)
+        return
+      }
+
+      try {
+        setGoalsLoading(true)
+        type GoalRow = {
+          id: string
+          name: string | null
+          description: string | null
+          goal_type: string | null
+          target_amount: number | string | null
+          base_currency: string | null
+          deadline: string | null
+          status: string | null
+          goal_contributions?: { amount: number | string | null; currency?: string | null }[] | null
+        }
+        const { data, error } = await supabase
+          .from('goals')
+          .select(
+            `id, name, description, goal_type, target_amount, base_currency, deadline, status, created_at, goal_contributions ( amount, currency )`
+          )
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true })
+
+        if (error) throw error
+
+        const normalized: GoalDisplay[] = (data as GoalRow[] | null || []).map((row) => {
+          const targetCurrency = (row.base_currency || 'COP').toUpperCase()
+          const contributionsRaw = Array.isArray(row.goal_contributions)
+            ? row.goal_contributions.reduce((sum, contrib) => {
+                const raw = contrib?.amount
+                const contribCurrency = (contrib?.currency || '').toString().toUpperCase()
+                if (contribCurrency && contribCurrency !== targetCurrency) return sum
+                if (typeof raw === 'number') return sum + raw
+                if (typeof raw === 'string') {
+                  const parsed = parseFloat(raw)
+                  return Number.isFinite(parsed) ? sum + parsed : sum
+                }
+                return sum
+              }, 0)
+            : 0
+          const contributions = Number.isFinite(contributionsRaw) ? contributionsRaw : 0
+          const contributionsClamped = contributions >= 0 ? contributions : 0
+          const goalType = (row.goal_type || 'saving').toString().toLowerCase()
+          const status = (row.status || 'active').toString().toLowerCase()
+          const targetRaw = row.target_amount
+          const target = typeof targetRaw === 'number'
+            ? targetRaw
+            : typeof targetRaw === 'string'
+              ? parseFloat(targetRaw)
+              : 0
+          const targetAbs = Number.isFinite(target) ? Math.abs(target) : 0
+          const progressPct = targetAbs > 0 ? Math.min(100, Math.max(0, (contributionsClamped / targetAbs) * 100)) : 0
+          return {
+            id: row.id,
+            name: row.name || 'Goal',
+            description: row.description,
+            goalType,
+            targetAmount: targetAbs,
+            targetCurrency,
+            deadline: row.deadline,
+            progressPct,
+            contributed: contributionsClamped,
+            status,
+          }
+        })
+
+        setGoals(normalized)
+      } catch (error) {
+        console.error('Error fetching goals:', error)
+        setGoals([])
+      } finally {
+        setGoalsLoading(false)
+      }
+    }
+
+    fetchGoals()
+  }, [authReady, userId])
+
 
   if (loading) {
     return (
@@ -627,7 +832,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {expenses.slice(0, 5).map((tx) => {
+                  {expenses.slice(0, 5).map((tx, idx) => {
                     const type = String(tx.entry_type || "").toLowerCase()
                     const isIncome = type === 'income'
                     const isExpense = type === 'expense'
@@ -694,7 +899,7 @@ export default function Dashboard() {
               {accounts.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No accounts found.</div>
               ) : (
-                accounts.map((acct) => {
+                accounts.map((acct, idx) => {
                   const symbol = '$'
                   const code = (acct.currency || 'USD').toUpperCase()
                   return (
@@ -729,7 +934,7 @@ export default function Dashboard() {
               {creditCards.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No credit cards found.</div>
               ) : (
-                creditCards.map((cc) => {
+                creditCards.map((cc, idx) => {
                   // Always show debt in COP, negative with $ symbol (no red color)
                   const absAmount = Math.abs(cc.amount || 0)
                   return (
@@ -750,6 +955,175 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+        </div>
+        {/* Third row: Monthly Budget + Goals/Investments */}
+        <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
+          <Card x-chunk="dashboard-01-chunk-8">
+            <CardHeader>
+              <CardTitle>Monthly Budget</CardTitle>
+              <CardDescription>Plan and track this month&apos;s budget.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-6">
+                {budgetItems.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No budget items found.</div>
+                ) : (
+                  budgetItems.slice(0, 5).map((bi) => {
+                    const pct = Math.max(0, bi.progressPct || 0)
+                    const barValue = Math.min(100, pct)
+                    const over = pct >= 100
+                    const indicatorClass = over ? 'bg-red-500' : undefined
+                    const dueLabel = bi.due ? (() => { const d = new Date(bi.due as string); return isNaN(d.getTime()) ? bi.due : d.toLocaleDateString() })() : null
+                    const cat = String(bi.name || '').toLowerCase()
+                    const Icon = getCategoryIcon(cat)
+                    return (
+                      <div key={bi.id} className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted">
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div className="text-sm font-medium leading-none truncate">
+                            {bi.name}
+                          </div>
+                          <div className="ml-auto text-sm font-medium">
+                            ${bi.amount.toLocaleString()}
+                          </div>
+                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2 cursor-default">
+                              <Progress value={barValue} className="h-2 flex-1" indicatorClassName={indicatorClass} />
+                              <div className="w-12 text-right text-xs font-medium text-foreground">{Math.round(pct)}%</div>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="center" className="text-xs">
+                            <div>
+                              Paid: ${ (bi.paid ?? 0).toLocaleString() } of ${ bi.amount.toLocaleString() }
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                        <div className="flex items-center text-xs text-muted-foreground">
+                          <div className="">{dueLabel ? `Due: ${dueLabel}` : ''}</div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+              <Button asChild className="w-full mt-4 group transition-all duration-150 hover:shadow-md hover:-translate-y-0.5">
+                <Link href="/budget" className="flex items-center justify-center gap-2">
+                  <span>View All</span>
+                  <ArrowUpRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+          <div className="flex flex-col gap-4 xl:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Goals</CardTitle>
+                <CardDescription>Track progress toward savings and debt targets.</CardDescription>
+              </CardHeader>
+              <CardContent className="pb-3">
+                {!SUPABASE_CONFIGURED ? (
+                  <div className="text-sm text-muted-foreground">Configure Supabase environment variables to load goals.</div>
+                ) : (!authReady || goalsLoading) ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <div key={idx} className="space-y-2.5 rounded-lg border bg-muted/10 p-3">
+                        <div className="flex items-center gap-2.5">
+                          <Skeleton className="h-9 w-9 rounded-md" />
+                          <div className="flex-1 space-y-1.5">
+                            <Skeleton className="h-4 w-24" />
+                            <Skeleton className="h-3 w-28" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-2 w-full" />
+                        <Skeleton className="h-3 w-28" />
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Skeleton className="h-3 w-3 rounded" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : goals.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No goals yet. Create your first savings or debt goal to see progress here.</div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {goals.slice(0, 3).map((goal) => {
+                      const Icon = getGoalIcon(goal.goalType)
+                      const deadlineLabel = goal.deadline
+                        ? (() => {
+                            const parsed = new Date(goal.deadline as string)
+                            if (Number.isNaN(parsed.getTime())) return 'Deadline pending'
+                            return parsed.toLocaleDateString(undefined, {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          })()
+                        : 'No deadline set'
+                      const targetLabel = `${goal.targetCurrency} ${goal.targetAmount.toLocaleString()}`
+                      return (
+                        <div key={goal.id} className="space-y-2.5 rounded-lg border bg-card/70 p-3 shadow-sm">
+                          <div className="flex items-start gap-2.5">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="text-sm font-semibold leading-tight text-foreground">{goal.name}</div>
+                              <div className="text-xs text-muted-foreground whitespace-pre-line leading-snug">
+                                {goal.description ? goal.description : 'No description provided.'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="space-y-1 cursor-default">
+                                  <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+                                    <span>Progress</span>
+                                    <span className="text-foreground">{Math.round(goal.progressPct)}%</span>
+                                  </div>
+                                  <Progress value={goal.progressPct} className="h-1.5" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" align="center" className="text-xs">
+                                <div className="space-y-1 text-left">
+                                  <div className="font-medium text-foreground">Collected {`${goal.targetCurrency} ${goal.contributed.toLocaleString()}`}</div>
+                                  <div className="text-muted-foreground">Goal {targetLabel}</div>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span>Target amount</span>
+                              <span>{targetLabel}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              <span>{deadlineLabel === 'No deadline set' ? 'No deadline set' : `Target: ${deadlineLabel}`}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="flex-1 flex flex-col">
+              <CardHeader>
+                <CardTitle>Investments</CardTitle>
+                <CardDescription>Monitor investment performance here soon.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 pb-6">
+                <div className="flex h-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                  Investment insights coming soon.
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Moved FinMate Bot Status to the bottom */}
