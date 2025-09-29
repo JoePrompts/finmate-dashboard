@@ -899,7 +899,7 @@ export default function Dashboard() {
               {accounts.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No accounts found.</div>
               ) : (
-                accounts.map((acct, idx) => {
+                accounts.map((acct) => {
                   const symbol = '$'
                   const code = (acct.currency || 'USD').toUpperCase()
                   return (
@@ -934,7 +934,7 @@ export default function Dashboard() {
               {creditCards.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No credit cards found.</div>
               ) : (
-                creditCards.map((cc, idx) => {
+                creditCards.map((cc) => {
                   // Always show debt in COP, negative with $ symbol (no red color)
                   const absAmount = Math.abs(cc.amount || 0)
                   return (
