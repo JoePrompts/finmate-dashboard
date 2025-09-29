@@ -22,6 +22,7 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Sidebar,
   SidebarContent,
@@ -163,6 +164,7 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname()
   const [user, setUser] = useState<{ name: string; email: string; avatar: string } | null>(null)
 
   useEffect(() => {
@@ -199,7 +201,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Developing</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Dashboard">
+              <SidebarMenuButton asChild tooltip="Dashboard" isActive={pathname === "/"}>
                 <Link href="/">
                   <LayoutDashboard />
                   <span>Dashboard</span>
@@ -207,10 +209,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Transactions">
+              <SidebarMenuButton asChild tooltip="Transactions" isActive={pathname?.startsWith("/transactions") || false}>
                 <Link href="/transactions">
                   <Receipt />
                   <span>Transactions</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Budget" isActive={pathname?.startsWith("/budget") || false}>
+                <Link href="/budget">
+                  <PieChart />
+                  <span>Budget</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
