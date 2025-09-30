@@ -33,7 +33,9 @@ FinMate dashboard is a Next.js web app with shadcn/ui components that displays A
 - USD→COP hover tooltip for currency conversion (animated)
 - Account Balances card with icons and per-account currency tooltips (AstroPay + USD accounts)
 - Credit Cards card with debt totals in COP (USD purchases converted)
+- Goals card (3-wide grid) showing goal icon, description, progress tooltip (with collected vs target), target amount, and deadline; Investments placeholder card stacked below to mirror layout width with Monthly Budget
 - Bot status monitoring with server health indicators
+- Sidebar navigation highlights Dashboard, Transactions, and Budget links based on the active route
 - Dark/light/system theme support
 - Responsive design
 
@@ -127,6 +129,7 @@ The dashboard follows exact shadcn/ui patterns:
 
 ## File Structure
 - `src/app/page.tsx` - Main dashboard component
+- `src/app/budget/page.tsx` - Budget overview route (category aggregations, per-item drilldowns, sheet view)
 - `src/app/globals.css` - Global styles with OKLCH colors
 - `src/components/ui/` - shadcn/ui components (card, button, badge, etc.)
 - `src/lib/supabase.ts` - Supabase client and types
@@ -159,6 +162,8 @@ The dashboard follows exact shadcn/ui patterns:
 - Preserve OKLCH color system
 - Maintain responsive design patterns
 - Test theme switching functionality
+- Unify link variant color in dark mode for consistent contrast across interactive text.
+- If exact height parity with second-row cards is desired later: either reduce visible budget rows or cap card height with internal scroll.
 
 ## Recent Changes
 - Sidebar: Installed and integrated shadcn `sidebar-07` preset; wired into global layout.
@@ -171,6 +176,8 @@ The dashboard follows exact shadcn/ui patterns:
 - Lint/Build: Fixed ESLint issues (empty object type, unused imports) and ensured type checks pass on Vercel.
 - Theme: Centralized theme logic into a ThemeProvider; fixed persistence so saved preference isn’t clobbered on first mount; listens to system changes in `system` mode.
 - Dashboard → Recent Transactions: Limited to last 5 items, moved “View All” to the bottom as a full-width button with hover animation; uses Next.js `Link` for SPA navigation to `/transactions`.
+- Dark Mode Buttons: Fixed low-contrast primary button text by setting `--primary-foreground` to white (`oklch(0.985 0 0)`) within `.dark` in `src/app/globals.css`.
+- Monthly Budget Card: Temporarily compacted icon size, spacing, and progress thickness to match second-row cards, then reverted to the original layout per request (no net layout change in code).
 
 ### New Transactions Page
 - Route: `/transactions` with a simple header (SidebarTrigger + title) and persistent Refresh and Theme settings controls.
@@ -232,3 +239,22 @@ In the Supabase Dashboard, go to Authentication → URL Configuration and set:
 - Additional Redirect URLs: include your production domain, your local dev URL `http://localhost:3000`, and any preview domains if needed.
 
 If these aren’t set, Google sign‑in may redirect to `localhost` in production.
+
+### Budget Page Updates
+- Replicated the Dashboard’s “Monthly Budget” on `/budget` without slicing or pagination (shows all categories).
+- Added a per-category Sheet with:
+  - Budget Breakdown per item (planned, paid, progress, due).
+  - Transactions strictly linked through `budget_payments` references, grouped under each budget item.
+  - The listing avoids category-based inference to prevent mismatches (e.g., Transporte only shows payments-linked txs).
+
+#### Budget Paid/Progress
+- Planned amounts per item are detected from `planned_amount | amount | expected_amount` in `budget_items`.
+- Paid amounts are summed from `budget_payments` for the current UTC month, grouped by `budget_item_id` and rolled up to the category.
+- Progress = `paid / planned`. Due date shown when available (`due_date | due | deadline | dueDate | due_at`).
+
+#### Payment→Transaction Linkage
+- `budget_payments` may reference the source transaction with any of these keys: `transaction_id`, `tx_id`, `expense_id`, `transaction`, `transaction_ref`, `transactionId`, `expenseId`.
+- The app gathers those IDs for the month, fetches the corresponding `transactions`, and groups them under each `budget_item_id` to render in the Sheet.
+
+#### Tables (addendum)
+- `budget_payments`: used for paid totals and for resolving linked transactions per budget item.
