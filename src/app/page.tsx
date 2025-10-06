@@ -430,15 +430,25 @@ export default function Dashboard() {
           .eq('user_id', userId)
         if (error) throw error
         const rows = (data || []) as unknown as AccountRow[]
-        const sum = rows.reduce((s, r) => s + Number((r.starting_balance ?? r.balance) ?? 0), 0)
-        setNetWorth(sum)
+
+        // Normalize numeric values that may come as strings with formatting (e.g. "USD 1,234.56")
+        const parseAmount = (input: unknown): number => {
+          if (typeof input === 'number') return Number.isFinite(input) ? input : Number.NaN
+          if (typeof input === 'string') {
+            const cleaned = input.replace(/,/g, '').replace(/[^0-9.\-]/g, '')
+            if (!cleaned || cleaned === '-' || cleaned === '.') return Number.NaN
+            const parsed = Number(cleaned)
+            return Number.isFinite(parsed) ? parsed : Number.NaN
+          }
+          return Number.NaN
+        }
 
         // Helper to pick the best numeric field per record
         const pickAmount = (rec: Record<string, unknown>, keys: string[]): number => {
           for (const k of keys) {
-            const v = rec[k]
-            if (typeof v === 'number') return v
-            if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v)
+            if (!(k in rec)) continue
+            const parsed = parseAmount(rec[k])
+            if (!Number.isNaN(parsed)) return parsed
           }
           return 0
         }
@@ -489,6 +499,8 @@ export default function Dashboard() {
             }
           })
 
+        let accountsForNetWorth: AccountDisplay[] = accountsBase
+
         // Compute credit card balances strictly from transactions converted to COP
         try {
           type TxRow = { payment_method: string | null; amount: number | string | null; entry_type?: string | null; currency?: string | null }
@@ -527,7 +539,7 @@ export default function Dashboard() {
             }
             return { ...acct, amount: acct.amount + txTotal }
           })
-          setAccounts(accountsWithTx)
+          accountsForNetWorth = accountsWithTx
 
           // Match by includes both ways to handle naming differences
           ccList = ccList.map((cc) => {
@@ -550,7 +562,10 @@ export default function Dashboard() {
           })
         } catch (txe) {
           console.warn('Credit card transaction sum failed:', txe)
+          accountsForNetWorth = accountsBase
         }
+
+        setAccounts(accountsForNetWorth)
 
         setCreditCards(ccList)
       } catch (e) {
@@ -560,6 +575,29 @@ export default function Dashboard() {
 
     fetchMetrics()
   }, [authReady, userId, usdCopRate])
+
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) {
+      setNetWorth(0)
+      return
+    }
+    if (!accounts || accounts.length === 0) {
+      setNetWorth(0)
+      return
+    }
+
+    const convertToCop = (value: number, currency?: string | null): number => {
+      const amount = Number.isFinite(value) ? value : 0
+      const code = (currency || 'COP').toString().toUpperCase()
+      if (code === 'USD' && typeof usdCopRate === 'number') {
+        return amount * usdCopRate
+      }
+      return amount
+    }
+
+    const totalNetWorth = accounts.reduce((sum, acct) => sum + convertToCop(acct.amount, acct.currency), 0)
+    setNetWorth(Number.isFinite(totalNetWorth) ? totalNetWorth : 0)
+  }, [accounts, usdCopRate])
 
   useEffect(() => {
     async function fetchGoals() {
