@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Progress } from "@/components/ui/progress"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
@@ -84,6 +84,15 @@ export default function Dashboard() {
   }
   const [goals, setGoals] = useState<GoalDisplay[]>([])
   const [goalsLoading, setGoalsLoading] = useState(true)
+
+  const convertToCop = useCallback((value: number, currency?: string | null): number => {
+    const amount = Number.isFinite(value) ? value : 0
+    const code = (currency || 'COP').toString().toUpperCase()
+    if (code === 'USD' && typeof usdCopRate === 'number') {
+      return amount * usdCopRate
+    }
+    return amount
+  }, [usdCopRate])
 
   // Global USD->COP FX for aggregations (shared with tooltip cache)
   const { data: usdCopRate } = useQuery({
@@ -557,7 +566,7 @@ export default function Dashboard() {
               return { ...cc, amount: txTotalCop, currency: 'COP' }
             }
             const curr = (cc.currency || 'COP').toUpperCase()
-            const fallbackCop = curr === 'USD' && typeof usdCopRate === 'number' ? cc.amount * usdCopRate : cc.amount
+            const fallbackCop = convertToCop(cc.amount, curr)
             return { ...cc, amount: fallbackCop, currency: 'COP' }
           })
         } catch (txe) {
@@ -565,7 +574,12 @@ export default function Dashboard() {
           accountsForNetWorth = accountsBase
         }
 
-        setAccounts(accountsForNetWorth)
+        const sortedAccounts = [...accountsForNetWorth].sort((a, b) => {
+          const diff = convertToCop(b.amount, b.currency) - convertToCop(a.amount, a.currency)
+          if (diff !== 0) return diff
+          return String(b.name || '').localeCompare(String(a.name || ''))
+        })
+        setAccounts(sortedAccounts)
 
         setCreditCards(ccList)
       } catch (e) {
@@ -574,7 +588,7 @@ export default function Dashboard() {
     }
 
     fetchMetrics()
-  }, [authReady, userId, usdCopRate])
+  }, [authReady, userId, usdCopRate, convertToCop])
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
@@ -586,18 +600,9 @@ export default function Dashboard() {
       return
     }
 
-    const convertToCop = (value: number, currency?: string | null): number => {
-      const amount = Number.isFinite(value) ? value : 0
-      const code = (currency || 'COP').toString().toUpperCase()
-      if (code === 'USD' && typeof usdCopRate === 'number') {
-        return amount * usdCopRate
-      }
-      return amount
-    }
-
     const totalNetWorth = accounts.reduce((sum, acct) => sum + convertToCop(acct.amount, acct.currency), 0)
     setNetWorth(Number.isFinite(totalNetWorth) ? totalNetWorth : 0)
-  }, [accounts, usdCopRate])
+  }, [accounts, usdCopRate, convertToCop])
 
   useEffect(() => {
     async function fetchGoals() {
