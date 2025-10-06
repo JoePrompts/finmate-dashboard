@@ -458,19 +458,19 @@ export default function Dashboard() {
 
           // Compute per-item paid sums from budget_payments (this month)
           try {
-          const { data: pays, error: payErr } = await supabase
-            .from('budget_payments')
-            .select('budget_item_id, amount, date, user_id, currency')
-            .eq('user_id', userIdB)
-            .gte('date', start.toISOString())
-            .lte('date', end.toISOString())
-            .limit(1000)
-            if (payErr) throw payErr
-
             const start = new Date()
             start.setUTCDate(1)
             start.setUTCHours(0, 0, 0, 0)
             const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999))
+
+            const { data: pays, error: payErr } = await supabase
+              .from('budget_payments')
+              .select('budget_item_id, amount, date, user_id, currency')
+              .eq('user_id', userIdB)
+              .gte('date', start.toISOString())
+              .lte('date', end.toISOString())
+              .limit(1000)
+            if (payErr) throw payErr
 
             const amtKeys = ['amount'] as const
             const sumByItem = new Map<string, number>()
