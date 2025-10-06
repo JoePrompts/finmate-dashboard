@@ -597,7 +597,12 @@ export default function Dashboard() {
         })
         setAccounts(sortedAccounts)
 
-        setCreditCards(ccList)
+        const sortedCreditCards = [...ccList].sort((a, b) => {
+          const diff = convertToCop(b.amount, b.currency) - convertToCop(a.amount, a.currency)
+          if (diff !== 0) return diff
+          return String(b.name || '').localeCompare(String(a.name || ''))
+        })
+        setCreditCards(sortedCreditCards)
       } catch (e) {
         console.warn('Net worth fetch failed:', e)
       }
