@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Progress } from "@/components/ui/progress"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/app/providers"
@@ -93,6 +93,17 @@ export default function Dashboard() {
   }
   const [goals, setGoals] = useState<GoalDisplay[]>([])
   const [goalsLoading, setGoalsLoading] = useState(true)
+
+  const topBudgetItems = useMemo(() => {
+    return budgetItems
+      .slice()
+      .sort((a, b) => {
+        const paidDiff = (b.paid || 0) - (a.paid || 0)
+        if (paidDiff !== 0) return paidDiff
+        return (b.amount || 0) - (a.amount || 0)
+      })
+      .slice(0, 5)
+  }, [budgetItems])
 
   // Global USD->COP FX for aggregations (shared with tooltip cache)
   const { data: usdCopRate } = useQuery({
@@ -333,39 +344,127 @@ export default function Dashboard() {
           }
 
           // Build display list for Monthly Budget card
-          // Aggregate by category: sum planned amounts and collect earliest due date per category
-          const catKeys = ['category','group','type','label'] as const
+          // Aggregate by category using stable category IDs when available
+          const catIdKeys = ['category_id', 'categoryId', 'categoryID', 'categoryid', 'budget_category_id', 'budgetCategoryId'] as const
+          const catLabelKeys = ['category_name', 'categoryName', 'category_label', 'label', 'title', 'group', 'type', 'name', 'category'] as const
           const dueKeys = ['due_date','due','deadline','dueDate','due_at'] as const
           const idToCat = new Map<string, string>()
           const plannedByCat = new Map<string, number>()
           const dueByCat = new Map<string, string>()
+          const categoryLabels = new Map<string, string>()
+          const categoryIdRawValues = new Set<string | number>()
+
+          const normalizeCategoryQueryValue = (value: string | number): string | number => {
+            if (typeof value === 'number') return value
+            const trimmed = value.trim()
+            if (/^-?\d+$/.test(trimmed)) {
+              const num = Number(trimmed)
+              if (Number.isFinite(num)) return num
+            }
+            return trimmed
+          }
+
+          const hydrateCategoryLabels = async () => {
+            const rawValues = Array.from(categoryIdRawValues).filter((v) => v !== null && v !== undefined && v !== 'uncategorized')
+            if (rawValues.length === 0) return
+            const normalized = Array.from(new Set(rawValues.map((v) => normalizeCategoryQueryValue(v as string | number))))
+            if (normalized.length === 0) return
+
+            const sources = [
+              { table: 'budget_categories', idColumns: ['id', 'category_id'] as const },
+              { table: 'categories', idColumns: ['id', 'category_id'] as const },
+            ] as const
+
+            for (const { table, idColumns } of sources) {
+              for (const column of idColumns) {
+                try {
+                  const { data, error } = await supabase
+                    .from(table)
+                    .select('*')
+                    .in(column, normalized as (string | number)[])
+                  if (error) {
+                    console.warn(`[Budget] Category lookup failed via ${table}.${column}:`, (error as { message?: string }).message || error)
+                    continue
+                  }
+                  if (!data || data.length === 0) continue
+                  let matched = false
+                  for (const row of data as Record<string, unknown>[]) {
+                    const raw = row[column] ?? row['id'] ?? row['category_id']
+                    if (raw == null) continue
+                    const id = String(raw)
+                    const labelCandidate = [row['name'], row['category_name'], row['label'], row['title']]
+                      .map((val) => (typeof val === 'string' ? val.trim() : ''))
+                      .find((val) => val.length > 0)
+                    if (labelCandidate) {
+                      categoryLabels.set(id, labelCandidate)
+                      matched = true
+                    }
+                  }
+                  if (matched) return
+                } catch (lookupErr) {
+                  console.warn(`[Budget] Category lookup error via ${table}.${column}:`, lookupErr)
+                }
+              }
+            }
+          }
+
+          const resolveCategory = (record: BudgetRecord) => {
+            let catId: string | null = null
+            let rawValue: string | number | null = null
+            for (const key of catIdKeys) {
+              const value = record[key as string]
+              if (typeof value === 'number' && Number.isFinite(value)) { rawValue = value; catId = String(value); break }
+              if (typeof value === 'string' && value.trim()) { rawValue = value.trim(); catId = value.trim(); break }
+            }
+            let label: string | null = null
+            for (const key of catLabelKeys) {
+              const value = record[key as string]
+              if (typeof value === 'string' && value.trim()) { label = value.trim(); break }
+            }
+            if (!catId && label) catId = label.toLowerCase()
+            if (!catId) catId = 'uncategorized'
+            if (!label) label = 'Uncategorized'
+            return { catId, label, rawValue }
+          }
+
           ;(bi as BudgetRecord[]).forEach((r) => {
             const amountKey = key || (['planned_amount','amount','expected_amount'].find(k => typeof r[k as string] === 'number' || typeof r[k as string] === 'string'))
             const rawAmount = amountKey ? r[amountKey as string] : 0
             const amount = typeof rawAmount === 'number' ? rawAmount : typeof rawAmount === 'string' ? parseFloat(rawAmount) : 0
             const rawId = r['id'] as unknown
             const idStr = rawId == null ? null : String(rawId)
-            const catKey = catKeys.find(k => typeof r[k as string] === 'string') as (typeof catKeys)[number] | undefined
-            const rawCat = catKey ? (r[catKey as string] as string) : ''
-            const cat = (rawCat || 'Uncategorized').toString()
-            if (idStr) idToCat.set(idStr, cat)
-            plannedByCat.set(cat, (plannedByCat.get(cat) || 0) + (Number.isFinite(amount) ? Number(amount) : 0))
+
+            const { catId, label: catLabel, rawValue: rawCatValue } = resolveCategory(r)
+            if (idStr) idToCat.set(idStr, catId)
+            const existingLabel = categoryLabels.get(catId)
+            if ((!existingLabel || existingLabel === 'Uncategorized') && catLabel) {
+              categoryLabels.set(catId, catLabel)
+            }
+            if (rawCatValue !== null && rawCatValue !== undefined) {
+              categoryIdRawValues.add(rawCatValue)
+            }
+            plannedByCat.set(catId, (plannedByCat.get(catId) || 0) + (Number.isFinite(amount) ? Number(amount) : 0))
+
             const dueKey = dueKeys.find(k => typeof r[k as string] === 'string') as (typeof dueKeys)[number] | undefined
             const due = dueKey ? (r[dueKey as string] as string) : null
             if (due) {
-              const prev = dueByCat.get(cat)
+              const prev = dueByCat.get(catId)
               if (!prev || (Date.parse(due) || Infinity) < (Date.parse(prev) || Infinity)) {
-                dueByCat.set(cat, due)
+                dueByCat.set(catId, due)
               }
             }
           })
+          await hydrateCategoryLabels()
+
           // Compute per-item paid sums from budget_payments (this month)
           try {
-            const { data: pays, error: payErr } = await supabase
-              .from('budget_payments')
-              .select('budget_item_id, amount, date, user_id')
-              .eq('user_id', userIdB)
-              .limit(1000)
+          const { data: pays, error: payErr } = await supabase
+            .from('budget_payments')
+            .select('budget_item_id, amount, date, user_id, currency')
+            .eq('user_id', userIdB)
+            .gte('date', start.toISOString())
+            .lte('date', end.toISOString())
+            .limit(1000)
             if (payErr) throw payErr
 
             const start = new Date()
@@ -391,34 +490,40 @@ export default function Dashboard() {
                 if (typeof v === 'number') { paid = v; break }
                 if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) { paid = Number(v); break }
               }
-              sumByItem.set(itemRef, (sumByItem.get(itemRef) || 0) + (Number.isFinite(paid) ? paid : 0))
+              const currency = typeof row['currency'] === 'string' ? row['currency'] : undefined
+              const normalizedPaid = Number.isFinite(paid) ? convertToCop(Math.abs(paid), currency) : 0
+              sumByItem.set(itemRef, (sumByItem.get(itemRef) || 0) + normalizedPaid)
             }
 
             // Sum payments by category using item->category mapping
             const paidByCat = new Map<string, number>()
-            for (const [itemId, cat] of idToCat.entries()) {
+            for (const [itemId, catId] of idToCat.entries()) {
               const paid = sumByItem.get(itemId) || 0
               if (!paid) continue
-              paidByCat.set(cat, (paidByCat.get(cat) || 0) + paid)
+              paidByCat.set(catId, (paidByCat.get(catId) || 0) + paid)
             }
 
-            const withProgress: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => {
-              const paid = paidByCat.get(cat) || 0
+            const withProgress: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([catId, amt]) => {
+              const paid = paidByCat.get(catId) || 0
               const progressPct = amt > 0 ? (paid / amt) * 100 : 0
-              const due = dueByCat.get(cat) ?? null
-              return { id: cat, name: cat, amount: amt, progressPct, paid, due }
+              const due = dueByCat.get(catId) ?? null
+              const label = categoryLabels.get(catId) || 'Uncategorized'
+              return { id: catId, name: label, amount: amt, progressPct, paid, due }
             })
-            // Sort: by progress desc, then by amount desc
+            // Sort: by amount paid desc, then by total amount desc
             withProgress.sort((a, b) => {
-              const p = (b.progressPct || 0) - (a.progressPct || 0)
-              if (p !== 0) return p
+              const paidDiff = (b.paid || 0) - (a.paid || 0)
+              if (paidDiff !== 0) return paidDiff
               return (b.amount || 0) - (a.amount || 0)
             })
             setBudgetItems(withProgress)
           } catch (e) {
             console.warn('Budget payments fetch failed:', e)
             // If payments fetch fails, still show items without progress
-            const cats: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => ({ id: cat, name: cat, amount: amt, progressPct: 0, paid: 0, due: dueByCat.get(cat) ?? null }))
+            const cats: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([catId, amt]) => {
+              const label = categoryLabels.get(catId) || 'Uncategorized'
+              return { id: catId, name: label, amount: amt, progressPct: 0, paid: 0, due: dueByCat.get(catId) ?? null }
+            })
             // Sort by amount desc as fallback
             cats.sort((a, b) => (b.amount || 0) - (a.amount || 0))
             setBudgetItems(cats)
@@ -1052,12 +1157,12 @@ export default function Dashboard() {
                 {budgetItems.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No budget items found.</div>
                 ) : (
-                  budgetItems.slice(0, 5).map((bi) => {
-                    const pct = Math.max(0, bi.progressPct || 0)
-                    const barValue = Math.min(100, pct)
-                    const over = pct >= 100
-                    const indicatorClass = over ? 'bg-red-500' : undefined
-                    const dueLabel = bi.due ? (() => { const d = new Date(bi.due as string); return isNaN(d.getTime()) ? bi.due : d.toLocaleDateString() })() : null
+                  topBudgetItems.map((bi) => {
+                      const pct = Math.max(0, bi.progressPct || 0)
+                      const barValue = Math.min(100, pct)
+                      const over = pct >= 100
+                      const indicatorClass = over ? 'bg-red-500' : undefined
+                      const dueLabel = bi.due ? (() => { const d = new Date(bi.due as string); return isNaN(d.getTime()) ? bi.due : d.toLocaleDateString() })() : null
                     const cat = String(bi.name || '').toLowerCase()
                     const Icon = getCategoryIcon(cat)
                     return (
