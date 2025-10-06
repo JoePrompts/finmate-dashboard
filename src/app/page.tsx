@@ -52,7 +52,16 @@ export default function Dashboard() {
   const [monthlyExpenses, setMonthlyExpenses] = useState(0)
   const [monthlyIncome, setMonthlyIncome] = useState(0)
   const [expectedBudget, setExpectedBudget] = useState(0)
-  const monthlyAvailable = monthlyIncome - monthlyExpenses - expectedBudget
+  const monthlyPlannedOutflow = Math.max(monthlyExpenses, expectedBudget)
+  const monthlyAvailable = monthlyIncome - monthlyPlannedOutflow
+  const budgetRemaining = Math.max(expectedBudget - monthlyExpenses, 0)
+  const budgetOver = Math.max(monthlyExpenses - expectedBudget, 0)
+  const monthlyAvailableCaption = (() => {
+    if (expectedBudget <= 0) return 'Based on actual cash flow (income − expenses)'
+    if (budgetOver > 0) return `Spending exceeds budget by $${budgetOver.toLocaleString()}`
+    if (budgetRemaining > 0) return `Holding $${budgetRemaining.toLocaleString()} for planned budget`
+    return 'Budget fully allocated'
+  })()
   type AccountRow = {
     id: string | number
     name?: string | null
@@ -250,6 +259,7 @@ export default function Dashboard() {
         amount: number | string | null
         created_at: string
         entry_type?: string | null
+        currency?: string | null
       }
       // removed unused AccountLite type per lint
       type BudgetRecord = Record<string, unknown>
@@ -259,14 +269,14 @@ export default function Dashboard() {
         const [expRes, incRes] = await Promise.all([
           supabase
             .from('transactions')
-            .select('amount, created_at, entry_type')
+            .select('amount, created_at, entry_type, currency')
             .eq('user_id', userId)
             .gte('created_at', start.toISOString())
             .lte('created_at', end.toISOString())
             .in('entry_type', ['expense', 'EXPENSE']),
           supabase
             .from('transactions')
-            .select('amount, created_at, entry_type')
+            .select('amount, created_at, entry_type, currency')
             .eq('user_id', userId)
             .gte('created_at', start.toISOString())
             .lte('created_at', end.toISOString())
@@ -276,8 +286,18 @@ export default function Dashboard() {
         if (incRes.error) throw incRes.error
         const rowsExp = (expRes.data || []) as ExpenseLite[]
         const rowsInc = (incRes.data || []) as ExpenseLite[]
-        setMonthlyExpenses(rowsExp.reduce((s, r) => s + Number(r.amount ?? 0), 0))
-        setMonthlyIncome(rowsInc.reduce((s, r) => s + Number(r.amount ?? 0), 0))
+        const expenseSum = rowsExp.reduce((sum, row) => {
+          const raw = Number(row.amount ?? 0)
+          const amt = Number.isFinite(raw) ? Math.abs(raw) : 0
+          return sum + convertToCop(amt, row.currency)
+        }, 0)
+        const incomeSum = rowsInc.reduce((sum, row) => {
+          const raw = Number(row.amount ?? 0)
+          const amt = Number.isFinite(raw) ? Math.abs(raw) : 0
+          return sum + convertToCop(amt, row.currency)
+        }, 0)
+        setMonthlyExpenses(expenseSum)
+        setMonthlyIncome(incomeSum)
       } catch (e) {
         console.warn('Monthly expenses/income fetch failed:', e)
       }
@@ -862,7 +882,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">${monthlyAvailable.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">Income − Expenses − Budget</p>
+              <p className="text-xs text-muted-foreground">{monthlyAvailableCaption}</p>
             </CardContent>
           </Card>
           <Card x-chunk="dashboard-01-chunk-3">
