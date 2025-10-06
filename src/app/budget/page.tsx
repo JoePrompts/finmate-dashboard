@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -49,7 +49,6 @@ export default function BudgetPage() {
   const [authReady, setAuthReady] = useState(false)
   const [itemsByCategory, setItemsByCategory] = useState<Map<string, BudgetDisplay[]>>(new Map())
   const [itemIdToCat, setItemIdToCat] = useState<Map<string, string>>(new Map())
-  const [itemIdToName, setItemIdToName] = useState<Map<string, string>>(new Map())
   const [txByItemId, setTxByItemId] = useState<Map<string, TxRow[]>>(new Map())
   type TxRow = {
     id: string
@@ -64,7 +63,6 @@ export default function BudgetPage() {
     entry_type?: string | null
     description?: string | null
   }
-  const [txRows, setTxRows] = useState<TxRow[]>([])
 
   // Load auth session
   useEffect(() => {
@@ -206,14 +204,12 @@ export default function BudgetPage() {
             setItemsByCategory(itemsMap)
             // expose id->cat and id->name maps
             const mapCat = new Map<string, string>()
-            const mapName = new Map<string, string>()
             for (const ib of itemBasics) {
               mapCat.set(ib.id, ib.cat.toLowerCase())
-              mapName.set(ib.id, ib.name)
             }
             setItemIdToCat(mapCat)
-            setItemIdToName(mapName)
           } catch (e) {
+            console.warn('Budget payments aggregation failed:', e)
             const cats: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => ({ id: cat, name: cat, amount: amt, progressPct: 0, paid: 0, due: dueByCat.get(cat) ?? null }))
             cats.sort((a, b) => (b.amount || 0) - (a.amount || 0))
             setBudgetItems(cats)
@@ -230,20 +226,16 @@ export default function BudgetPage() {
             }
             setItemsByCategory(itemsMap)
             const mapCat = new Map<string, string>()
-            const mapName = new Map<string, string>()
             for (const ib of itemBasics) {
               mapCat.set(ib.id, ib.cat.toLowerCase())
-              mapName.set(ib.id, ib.name)
             }
             setItemIdToCat(mapCat)
-            setItemIdToName(mapName)
           }
         } else {
           // If no budget_items, leave empty
           setBudgetItems([])
           setItemsByCategory(new Map())
           setItemIdToCat(new Map())
-          setItemIdToName(new Map())
         }
       } catch (e: unknown) {
         setErrorMsg(e instanceof Error ? e.message : 'Failed to fetch budget')
@@ -315,56 +307,6 @@ export default function BudgetPage() {
   }, [authReady, userId, itemIdToCat])
 
   // Fetch current month transactions for this user once
-  useEffect(() => {
-    async function fetchTx() {
-      if (!SUPABASE_CONFIGURED) return
-      if (!authReady || !userId) return
-      try {
-        const start = new Date()
-        start.setUTCDate(1)
-        start.setUTCHours(0, 0, 0, 0)
-        const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999))
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('id, merchant, amount, currency, date, created_at, payment_method, account, category, entry_type, description')
-          .eq('user_id', userId)
-          .gte('created_at', start.toISOString())
-          .lte('created_at', end.toISOString())
-          .order('created_at', { ascending: false })
-        if (error) throw error
-        setTxRows((data || []) as TxRow[])
-      } catch {
-        setTxRows([])
-      }
-    }
-    fetchTx()
-  }, [authReady, userId])
-
-  const txByCategory = useMemo(() => {
-    const map = new Map<string, TxRow[]>()
-    const norm = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase()
-    for (const r of txRows) {
-      const tcat = norm(r.category)
-      if (!tcat) continue
-      if (!map.has(tcat)) map.set(tcat, [])
-      map.get(tcat)!.push(r)
-    }
-    return map
-  }, [txRows])
-
-  function getTxForCategory(category: string): TxRow[] {
-    const key = String(category || '').trim().toLowerCase()
-    if (!key) return []
-    const direct = txByCategory.get(key) || []
-    if (direct.length) return direct
-    // fallback fuzzy: include those containing the key
-    const out: TxRow[] = []
-    for (const [k, list] of txByCategory.entries()) {
-      if (k.includes(key) || key.includes(k)) out.push(...list)
-    }
-    return out
-  }
-
   return (
     <>
       <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b sticky top-0 z-50 bg-background supports-[backdrop-filter]:bg-background/80 backdrop-blur px-4 md:px-6">

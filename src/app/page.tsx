@@ -85,15 +85,6 @@ export default function Dashboard() {
   const [goals, setGoals] = useState<GoalDisplay[]>([])
   const [goalsLoading, setGoalsLoading] = useState(true)
 
-  const convertToCop = useCallback((value: number, currency?: string | null): number => {
-    const amount = Number.isFinite(value) ? value : 0
-    const code = (currency || 'COP').toString().toUpperCase()
-    if (code === 'USD' && typeof usdCopRate === 'number') {
-      return amount * usdCopRate
-    }
-    return amount
-  }, [usdCopRate])
-
   // Global USD->COP FX for aggregations (shared with tooltip cache)
   const { data: usdCopRate } = useQuery({
     queryKey: ["fx", "USD", "COP"],
@@ -109,6 +100,15 @@ export default function Dashboard() {
     gcTime: 30 * 60 * 1000,
     retry: 1,
   })
+
+  const convertToCop = useCallback((value: number, currency?: string | null): number => {
+    const amount = Number.isFinite(value) ? value : 0
+    const code = (currency || 'COP').toString().toUpperCase()
+    if (code === 'USD' && typeof usdCopRate === 'number') {
+      return amount * usdCopRate
+    }
+    return amount
+  }, [usdCopRate])
 
   // Load auth session once and cache userId for all queries
   useEffect(() => {
@@ -313,14 +313,13 @@ export default function Dashboard() {
           }
 
           // Build display list for Monthly Budget card
-          const nameKeys = ['name', 'title', 'category', 'label'] as const
           // Aggregate by category: sum planned amounts and collect earliest due date per category
           const catKeys = ['category','group','type','label'] as const
           const dueKeys = ['due_date','due','deadline','dueDate','due_at'] as const
           const idToCat = new Map<string, string>()
           const plannedByCat = new Map<string, number>()
           const dueByCat = new Map<string, string>()
-          ;(bi as BudgetRecord[]).forEach((r, i) => {
+          ;(bi as BudgetRecord[]).forEach((r) => {
             const amountKey = key || (['planned_amount','amount','expected_amount'].find(k => typeof r[k as string] === 'number' || typeof r[k as string] === 'string'))
             const rawAmount = amountKey ? r[amountKey as string] : 0
             const amount = typeof rawAmount === 'number' ? rawAmount : typeof rawAmount === 'string' ? parseFloat(rawAmount) : 0
@@ -397,6 +396,7 @@ export default function Dashboard() {
             })
             setBudgetItems(withProgress)
           } catch (e) {
+            console.warn('Budget payments fetch failed:', e)
             // If payments fetch fails, still show items without progress
             const cats: BudgetDisplay[] = Array.from(plannedByCat.entries()).map(([cat, amt]) => ({ id: cat, name: cat, amount: amt, progressPct: 0, paid: 0, due: dueByCat.get(cat) ?? null }))
             // Sort by amount desc as fallback
@@ -875,7 +875,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {expenses.slice(0, 5).map((tx, idx) => {
+                  {expenses.slice(0, 5).map((tx) => {
                     const type = String(tx.entry_type || "").toLowerCase()
                     const isIncome = type === 'income'
                     const isExpense = type === 'expense'
