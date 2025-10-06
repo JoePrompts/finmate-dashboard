@@ -512,37 +512,54 @@ export default function Dashboard() {
 
         // Compute credit card balances strictly from transactions converted to COP
         try {
-          type TxRow = { payment_method: string | null; amount: number | string | null; entry_type?: string | null; currency?: string | null }
+          type TxRow = {
+            payment_method: string | null
+            account?: string | null
+            amount: number | string | null
+            entry_type?: string | null
+            currency?: string | null
+          }
           const { data: txs, error: txErr } = await supabase
             .from('transactions')
-            .select('payment_method, amount, entry_type, currency')
+            .select('payment_method, account, amount, entry_type, currency')
             .eq('user_id', userId)
           if (txErr) throw txErr
-          const normalizedSumByPmCOP = new Map<string, number>()
-          const sumByPmByCurrency = new Map<string, Map<string, number>>()
+          const normalizeLabel = (value: unknown): string => {
+            if (typeof value !== 'string') return ''
+            const trimmed = value.trim().toLowerCase()
+            return trimmed.replace(/\s+/g, ' ').trim()
+          }
+          const normalizedSumByLabelCOP = new Map<string, number>()
+          const sumByLabelByCurrency = new Map<string, Map<string, number>>()
           for (const r of (txs || []) as TxRow[]) {
-            const pm = (r.payment_method || '').toString().trim().toLowerCase()
-            if (!pm) continue
             const val = Number(r.amount ?? 0) || 0
             const et = (r.entry_type || '').toString().toLowerCase()
             const signed = et === 'income' ? Math.abs(val) : et === 'expense' ? -Math.abs(val) : val
             const cur = (r.currency || 'COP').toString().toUpperCase()
             const toCop = cur === 'USD' && typeof usdCopRate === 'number' ? signed * usdCopRate : signed
-            normalizedSumByPmCOP.set(pm, (normalizedSumByPmCOP.get(pm) || 0) + toCop)
-
-            // Track per-currency sums for bank accounts (no conversion)
-            if (!sumByPmByCurrency.has(pm)) sumByPmByCurrency.set(pm, new Map<string, number>())
-            const curMap = sumByPmByCurrency.get(pm)!
-            curMap.set(cur, (curMap.get(cur) || 0) + signed)
+            const labels = new Set<string>()
+            const pmLabel = normalizeLabel(r.payment_method)
+            const accountLabel = normalizeLabel(r.account)
+            if (pmLabel) labels.add(pmLabel)
+            if (accountLabel) labels.add(accountLabel)
+            if (labels.size === 0) continue
+            for (const label of labels) {
+              normalizedSumByLabelCOP.set(label, (normalizedSumByLabelCOP.get(label) || 0) + toCop)
+              if (!sumByLabelByCurrency.has(label)) sumByLabelByCurrency.set(label, new Map<string, number>())
+              const curMap = sumByLabelByCurrency.get(label)!
+              curMap.set(cur, (curMap.get(cur) || 0) + signed)
+            }
           }
+
+          const normalizeAccountName = (value: string): string => value.toLowerCase().trim().replace(/\s+/g, ' ')
 
           // Apply transaction sums to non-credit accounts in their own currency
           const accountsWithTx: AccountDisplay[] = accountsBase.map((acct) => {
-            const key = acct.name.toLowerCase()
+            const key = normalizeAccountName(acct.name)
             const code = (acct.currency || 'USD').toUpperCase()
             let txTotal = 0
-            for (const [pmKey, mapByCur] of sumByPmByCurrency.entries()) {
-              if (pmKey.includes(key) || key.includes(pmKey)) {
+            for (const [label, mapByCur] of sumByLabelByCurrency.entries()) {
+              if (label.includes(key) || key.includes(label)) {
                 txTotal += mapByCur.get(code) || 0
               }
             }
@@ -552,11 +569,11 @@ export default function Dashboard() {
 
           // Match by includes both ways to handle naming differences
           ccList = ccList.map((cc) => {
-            const ccKey = cc.name.toLowerCase()
+            const ccKey = normalizeAccountName(cc.name)
             let txTotalCop = 0
             let matched = false
-            for (const [pmKey, total] of normalizedSumByPmCOP.entries()) {
-              if (pmKey.includes(ccKey) || ccKey.includes(pmKey)) {
+            for (const [label, total] of normalizedSumByLabelCOP.entries()) {
+              if (label.includes(ccKey) || ccKey.includes(label)) {
                 txTotalCop += total
                 matched = true
               }
@@ -565,8 +582,7 @@ export default function Dashboard() {
             if (matched) {
               return { ...cc, amount: txTotalCop, currency: 'COP' }
             }
-            const curr = (cc.currency || 'COP').toUpperCase()
-            const fallbackCop = convertToCop(cc.amount, curr)
+            const fallbackCop = convertToCop(cc.amount, cc.currency)
             return { ...cc, amount: fallbackCop, currency: 'COP' }
           })
         } catch (txe) {
