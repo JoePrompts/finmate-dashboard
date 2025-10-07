@@ -28,6 +28,9 @@ export interface Expense {
   date: string
   created_at: string
   user_id: string | null
+  entry_type?: string | null
+  transfer_direction?: string | null
+  account?: string | null
 }
 
 export interface Category {

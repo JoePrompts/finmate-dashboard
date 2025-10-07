@@ -10,6 +10,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
+import { computeAmountMeta } from "@/lib/transaction-amount"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQuery } from "@tanstack/react-query"
@@ -42,6 +43,7 @@ export default function TransactionsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   type ExpenseRow = Expense & {
     entry_type?: string | null
+    transfer_direction?: string | null
     account?: string | null
     edited?: boolean | null
     edited_at?: string | null
@@ -120,12 +122,8 @@ export default function TransactionsPage() {
   const data = useMemo(() => {
     const norm = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase()
     const items = rows.map((r) => {
-      const amount = Number(r.amount)
-      const type = String(r.entry_type || '').toLowerCase()
-      // Sign based on entry_type if present
-      const sign = type === 'income' ? 1 : type === 'expense' ? -1 : amount >= 0 ? 1 : -1
-      const abs = Math.abs(amount)
-      const signed = sign * abs
+      const meta = computeAmountMeta(r.amount, r.entry_type, r.transfer_direction)
+      const signed = meta.signed
       const pmRaw = r.payment_method || r.account || ''
       const pm = norm(pmRaw)
       let isCredit = false
@@ -153,7 +151,9 @@ export default function TransactionsPage() {
         account: r.payment_method || r.account || '—',
         isCredit,
         category: r.category || '—',
-        type: type ? (type[0].toUpperCase() + type.slice(1)) : (signed >= 0 ? 'Income' : 'Expense'),
+        type: meta.displayType,
+        intent: meta.intent,
+        direction: meta.direction,
         description: r.description || '',
       }
     })
@@ -418,19 +418,20 @@ export default function TransactionsPage() {
                   const raw = rowById.get(r.id)
                   const d = r.date ? new Date(r.date) : null
                   const dateLabel = d ? d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''
-                  const isIncome = r.type.toLowerCase() === 'income' || r.amount >= 0
-                  const isExpense = r.type.toLowerCase() === 'expense' || r.amount < 0
+                  const isPositive = r.amount > 0
+                  const isNegative = r.amount < 0
                   const abs = Math.abs(r.amount)
+                  const sign = r.amount > 0 ? '+' : r.amount < 0 ? '-' : ''
                   const currencySymbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', AUD: '$', CAD: '$' }
                   const symbol = currencySymbols[r.currency] || '$'
                   return (
                     <TableRow key={r.id} className="[&>td]:py-3">
                       <TableCell className="whitespace-nowrap">{r.merchant}</TableCell>
                       <TableCell
-                        className={cn("text-right font-medium tabular-nums", isIncome && "text-emerald-600")}
-                        style={ isExpense ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {} }
+                        className={cn("text-right font-medium tabular-nums", isPositive && "text-emerald-600")}
+                        style={ isNegative ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {} }
                       >
-                        {isIncome ? '+' : isExpense ? '-' : ''}{symbol}{abs.toLocaleString()}
+                        {sign}{symbol}{abs.toLocaleString()}
                         {r.currency === 'USD' ? (
                           <UsdToCop amount={abs} />
                         ) : r.currency === 'COP' ? (
@@ -459,8 +460,9 @@ export default function TransactionsPage() {
                             <div className="mt-4 grid gap-3 text-sm pr-1 pb-6">
                             <div className="flex items-center justify-between">
                               <span className="text-muted-foreground">Amount</span>
-                              <span className={cn("font-medium tabular-nums", (r.type.toLowerCase()==='income'||r.amount>=0) && "text-emerald-600")} style={(r.type.toLowerCase()==='expense'||r.amount<0) ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {}}>
-                                {(r.amount>=0?'+':'-')}{r.currency === 'USD' ? '$' : ''}{Math.abs(r.amount).toLocaleString()} {r.currency !== 'USD' ? r.currency : ''}
+                              <span className={cn("font-medium tabular-nums", isPositive && "text-emerald-600")}
+                                style={isNegative ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : {}}>
+                                {sign}{r.currency === 'USD' ? '$' : ''}{abs.toLocaleString()} {r.currency !== 'USD' ? r.currency : ''}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
@@ -483,6 +485,12 @@ export default function TransactionsPage() {
                               <span className="text-muted-foreground">Type</span>
                               <span>{r.type}</span>
                             </div>
+                            {r.direction && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Transfer Direction</span>
+                                <span>{r.direction === 'in' ? 'IN' : 'OUT'}</span>
+                              </div>
+                            )}
                             {r.description && (
                               <div>
                                 <div className="text-muted-foreground mb-1">Description</div>
@@ -506,6 +514,9 @@ export default function TransactionsPage() {
                                 )}
                                 {typeof raw?.entry_type !== 'undefined' && (
                                   <div className="flex items-center justify-between"><span className="text-muted-foreground">Entry Type</span><span>{raw?.entry_type || '—'}</span></div>
+                                )}
+                                {typeof raw?.transfer_direction !== 'undefined' && (
+                                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Transfer Direction</span><span>{raw?.transfer_direction || '—'}</span></div>
                                 )}
                                 {typeof raw?.description !== 'undefined' && (
                                   <div>

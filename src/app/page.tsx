@@ -11,6 +11,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
 import { supabase, SUPABASE_CONFIGURED, type Expense } from "@/lib/supabase"
+import { computeAmountMeta } from "@/lib/transaction-amount"
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
@@ -43,7 +44,7 @@ import {
 } from "lucide-react"
 
 export default function Dashboard() {
-  type ExpenseRow = Expense & { entry_type?: string | null }
+  type ExpenseRow = Expense & { entry_type?: string | null; transfer_direction?: string | null }
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
   const { setTheme } = useTheme()
@@ -270,6 +271,7 @@ export default function Dashboard() {
         amount: number | string | null
         created_at: string
         entry_type?: string | null
+        transfer_direction?: string | null
         currency?: string | null
       }
       // removed unused AccountLite type per lint
@@ -280,14 +282,14 @@ export default function Dashboard() {
         const [expRes, incRes] = await Promise.all([
           supabase
             .from('transactions')
-            .select('amount, created_at, entry_type, currency')
+            .select('amount, created_at, entry_type, transfer_direction, currency')
             .eq('user_id', userId)
             .gte('created_at', start.toISOString())
             .lte('created_at', end.toISOString())
             .in('entry_type', ['expense', 'EXPENSE']),
           supabase
             .from('transactions')
-            .select('amount, created_at, entry_type, currency')
+            .select('amount, created_at, entry_type, transfer_direction, currency')
             .eq('user_id', userId)
             .gte('created_at', start.toISOString())
             .lte('created_at', end.toISOString())
@@ -642,11 +644,12 @@ export default function Dashboard() {
             account?: string | null
             amount: number | string | null
             entry_type?: string | null
+            transfer_direction?: string | null
             currency?: string | null
           }
           const { data: txs, error: txErr } = await supabase
             .from('transactions')
-            .select('payment_method, account, amount, entry_type, currency')
+            .select('payment_method, account, amount, entry_type, transfer_direction, currency')
             .eq('user_id', userId)
           if (txErr) throw txErr
           const normalizeLabel = (value: unknown): string => {
@@ -657,9 +660,7 @@ export default function Dashboard() {
           const normalizedSumByLabelCOP = new Map<string, number>()
           const sumByLabelByCurrency = new Map<string, Map<string, number>>()
           for (const r of (txs || []) as TxRow[]) {
-            const val = Number(r.amount ?? 0) || 0
-            const et = (r.entry_type || '').toString().toLowerCase()
-            const signed = et === 'income' ? Math.abs(val) : et === 'expense' ? -Math.abs(val) : val
+            const { signed } = computeAmountMeta(r.amount, r.entry_type, r.transfer_direction)
             const cur = (r.currency || 'COP').toString().toUpperCase()
             const toCop = cur === 'USD' && typeof usdCopRate === 'number' ? signed * usdCopRate : signed
             const labels = new Set<string>()
@@ -1022,22 +1023,20 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-6">
                   {expenses.slice(0, 5).map((tx) => {
-                    const type = String(tx.entry_type || "").toLowerCase()
-                    const isIncome = type === 'income'
-                    const isExpense = type === 'expense'
-                    const amount = Number(tx.amount)
-                    const sign = isIncome ? '+' : isExpense ? '-' : amount < 0 ? '-' : ''
-                    const absAmount = Math.abs(amount)
-                    const currency = tx.currency || 'USD'
-
+                    const currency = (tx.currency || 'USD').toString().toUpperCase()
+                    const meta = computeAmountMeta(tx.amount, tx.entry_type, tx.transfer_direction)
                     const currencySymbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', AUD: '$', CAD: '$' }
-                    const symbol = currencySymbols[currency.toUpperCase()] || '$'
+                    const symbol = currencySymbols[currency] || '$'
 
                     const category = String(tx.category || '').toLowerCase()
                     const Icon = getCategoryIcon(category)
                     const when = tx.date || tx.created_at
                     const date = when ? new Date(when) : null
                     const dateLabel = date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+
+                    const isPositive = meta.signed > 0
+                    const isNegative = meta.signed < 0
+                    const arrow = isPositive ? '↗' : isNegative ? '↘' : ''
 
                     return (
                       <div key={tx.id} className="flex items-center gap-3">
@@ -1049,20 +1048,16 @@ export default function Dashboard() {
                           <span className="text-xs text-muted-foreground">{dateLabel}</span>
                         </div>
                         <div
-                          className={cn("ml-auto text-sm font-medium", isIncome && "text-emerald-600")}
-                          style={
-                            (isExpense || (!isIncome && sign === '-'))
-                              ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' }
-                              : undefined
-                          }
+                          className={cn("ml-auto text-sm font-medium", isPositive && "text-emerald-600")}
+                          style={isNegative ? { color: 'rgb(248 113 113 / var(--tw-text-opacity, 1))' } : undefined}
                         >
-                          {sign}{symbol}{absAmount.toLocaleString()}{" "}
-                          {currency.toUpperCase() === 'USD' ? (
-                            <UsdToCop amount={absAmount} />
+                          {meta.displaySign}{symbol}{meta.abs.toLocaleString()}{" "}
+                          {currency === 'USD' ? (
+                            <UsdToCop amount={meta.abs} />
                           ) : (
-                            <span>{currency.toUpperCase()}</span>
+                            <span>{currency}</span>
                           )}
-                          <span className="ml-1">{isIncome ? '↗' : (isExpense || (!isIncome && sign === '-')) ? '↘' : ''}</span>
+                          <span className="ml-1">{arrow}</span>
                         </div>
                       </div>
                     )
